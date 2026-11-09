@@ -5,12 +5,7 @@ addEventListener('resize',fit);fit();
 
 const rnd=(a,b)=>a+Math.random()*(b-a);
 function hsh(s){let h=0;for(const ch of s)h=(h*31+ch.codePointAt(0))>>>0;return h}
-const comboBoost = Math.min(
-  100,
-  c.g.boost + (c.count - 1) * 8
-);
-
-f.r = pick(comboBoost);
+function pick(boost){
   const w=RAR.map((r,i)=>r.w+(i>=2?boost*(i===3?.5:1):-boost*.5*(i?0:1)));
   let s=w.reduce((a,b)=>a+Math.max(b,0),0),x=Math.random()*s;
   for(let i=0;i<w.length;i++){x-=Math.max(w[i],0);if(x<=0)return i}
@@ -47,38 +42,12 @@ function drawAv(c,x,y,r,k){
 }
 
 /* ===== จุดเชื่อม TikTok ===== */
-
-function onGift({
-  name,
-  gift,
-  count = 1,
-  uniqueId,
-  nickname,
-  avatar
-}) {
-  const g = GIFT[gift];
-  if (!g) return;
-
-  const key = uniqueId || name;
-  const u = userOf(key);
-
-  if (uniqueId) u.id = uniqueId;
-  if (nickname) u.nick = nickname;
-  if (avatar) u.av = avatar;
-
-  count = Math.max(1, Math.floor(Number(count) || 1));
-
-  // หนึ่ง Gift Event = หนึ่งรายการ Combo ในคิว
-  queue.push({
-    name: key,
-    g,
-    count,
-    eventId: crypto.randomUUID?.() || String(Date.now()) + Math.random()
-  });
-
-  toast(key, g, count);
-}
-
+function onGift({name,gift,count=1,uniqueId,nickname,avatar}){
+  const g=GIFT[gift];if(!g)return;
+  const key=uniqueId||name,u=userOf(key);
+  if(uniqueId)u.id=uniqueId;if(nickname)u.nick=nickname;if(avatar)u.av=avatar;
+  for(let i=0;i<g.cast*count;i++)queue.push({name:key,g});
+  toast(key,g,count);
 }
 function toast(name,g,n){
   sfx('gift');const u=userOf(name),feed=document.getElementById('feed'),d=document.createElement('div');d.className='msg gt';
@@ -89,50 +58,11 @@ function toast(name,g,n){
 
 /* ===== ตกปลา ===== */
 function slotPos(i){const r=Math.floor(i/3),k=i%3;return{x:W*(.5+.16*k+(r===1?.05:0)),y:H*[.67,.75,.83][r],sc:[.85,1,1.15][r]}}
-
-function startCast({name,g,count=1,eventId}) {
-  const used = casts.map(c => c.slot);
-  let s = 0;
-
-  while (used.includes(s)) s++;
-
-  casts.push({
-    name,
-    g,
-    count,
-    eventId,
-    f: null,
-    t: 0,
-    ph: 0,
-    ent: 0,
-    slot: s,
-    wait: rnd(16,20),
-    px: rnd(W*.1,W*.9),
-    py: rnd(H*.37,H*.54)
-  });
-}
-
+function startCast({name,g}){
   const used=casts.map(c=>c.slot);let s=0;while(used.includes(s))s++;
   casts.push({name,g,f:null,t:0,ph:0,ent:0,slot:s,wait:rnd(16,20),px:rnd(W*.1,W*.9),py:rnd(H*.37,H*.54)});
 }
-
-function pump() {
-  while (queue.length && casts.length < MAXF) {
-    const q = queue[0];
-    const rods = Math.max(1, q.g.cast || 1);
-
-    // รอจนมีช่องว่างเพียงพอสำหรับเบ็ดทั้งหมด
-    if (casts.length + rods > MAXF) break;
-
-    queue.shift();
-
-    // หนึ่ง Combo สามารถสร้างเบ็ดหลายคันตามชนิดของขวัญ
-    for (let i = 0; i < rods; i++) {
-      startCast(q);
-    }
-  }
-}
-
+function pump(){while(queue.length&&casts.length<MAXF)startCast(queue.shift())}
 function ring(x,y){rings.push({x,y,t:0})}
 function drawRings(){for(let i=rings.length-1;i>=0;i--){const r=rings[i];r.t+=.016;ctx.strokeStyle='rgba(180,255,235,'+Math.max(0,.5-r.t/2.4)+')';ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(r.x,r.y,r.t*26,r.t*8,0,0,6.3);ctx.stroke();if(r.t>1.2)rings.splice(i,1)}}
 function line(x1,y1,x2,y2){ctx.strokeStyle='rgba(255,246,224,.7)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke()}
@@ -177,8 +107,7 @@ function renderList(){
   if(casts.length)cur.append(avEl(casts[0].name,16),userOf(casts[0].name).nick+(casts.length>1?' +'+(casts.length-1):''));
   else cur.textContent='ยังไม่มีคนตกปลา';
   el.appendChild(cur);
-  queue.slice(0,5).forEach((q,i)=>{const d=document.createElement('div'),a=document.createElement('span'),b=document.createElement('span');d.className='qr';a.append((i+1)+'.',avEl(q.name,14),userOf(q.name).nick);b.textContent = q.g.l +
-  (q.count > 1 ? ' ×' + q.count + ' COMBO' : '');d.append(a,b);el.appendChild(d)});
+  queue.slice(0,5).forEach((q,i)=>{const d=document.createElement('div'),a=document.createElement('span'),b=document.createElement('span');d.className='qr';a.append((i+1)+'.',avEl(q.name,14),userOf(q.name).nick);b.textContent=q.g.l;d.append(a,b);el.appendChild(d)});
   if(queue.length>5){const m=document.createElement('div');m.className='fq';m.textContent='อีก '+(queue.length-5)+' คิว';el.appendChild(m)}
 }
 function updateUI(){
