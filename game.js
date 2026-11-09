@@ -222,9 +222,41 @@ ab.onclick=()=>{
 };
 const sb=document.getElementById('spd');
 sb.onclick=()=>{spd=spd===1?10:1;sb.textContent='เร่งเวลา: x'+spd};
-const sndb=document.getElementById('snd');
-sndb.onclick=()=>{muted=!muted;sndb.textContent='เสียง: '+(muted?'ปิด':'เปิด');if(!muted){ac();sfx('gift')}};
-addEventListener('pointerdown',()=>{if(!muted)ac()});
+
+const sndb = document.getElementById('snd');
+sndb.textContent = 'เสียง: ปิด';
+
+sndb.onclick = async () => {
+  muted = !muted;
+  sndb.textContent = 'เสียง: ' + (muted ? 'ปิด' : 'เปิด');
+
+  if (!muted) {
+    const a = ac();
+
+    if (!a) {
+      sndb.textContent = 'เสียง: ไม่รองรับ';
+      return;
+    }
+
+    try {
+      await a.resume();
+
+      if (a.state === 'running') {
+        sfx('gift');
+      } else {
+        sndb.textContent = 'เสียง: แตะเพื่อเปิดอีกครั้ง';
+      }
+    } catch (e) {
+      console.error('Audio error:', e);
+      sndb.textContent = 'เสียง: เปิดไม่สำเร็จ';
+    }
+  }
+};
+
+addEventListener('pointerdown', () => {
+  if (!muted) ac();
+});
+
 
 ['น้องผัก','ไข่เจียวรักแมว','Sriwan','บักแป้ง','MUTITA','ฝนไม่โอ','BaiFern','Kittisak'].forEach((n,i)=>setTimeout(()=>onGift({name:n,gift:i%2?'heart':'rose'}),i*500));
 updateUI();
