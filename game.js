@@ -225,7 +225,7 @@ sb.onclick=()=>{spd=spd===1?10:1;sb.textContent='เร่งเวลา: x'+sp
 
 const sndb = document.getElementById('snd');
 sndb.textContent = 'เสียง: ปิด';console.log('GAME JS LOADED', typeof ac, typeof sfx, muted);
-alert('GAME JS โหลดแล้ว');
+
 
 sndb.onclick = async () => {
   muted = !muted;
