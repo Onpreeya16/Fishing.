@@ -259,7 +259,6 @@ addEventListener('pointerdown', () => {
 });
 
 
-['น้องผัก','ไข่เจียวรักแมว','Sriwan','บักแป้ง','MUTITA','ฝนไม่โอ','BaiFern','Kittisak'].forEach((n,i)=>setTimeout(()=>onGift({name:n,gift:i%2?'heart':'rose'}),i*500));
 updateUI();
 requestAnimationFrame(frame);
 
