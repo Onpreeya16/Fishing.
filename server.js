@@ -25,59 +25,11 @@ setInterval(()=>clients.forEach(c=>c.write(':\n\n')),25000);
 
 const tt=new WebcastPushConnection(USER);
 tt.connect().then(()=>console.log('connected to TikTok')).catch(e=>console.log('error: '+e.message));
-const giftCombos = new Map();
-const COMBO_DELAY = 1500;
-
-function sendGift(msg) {
-  const data = 'data: ' + JSON.stringify(msg) + '\n\n';
-
-  clients.forEach(c => {
-    try {
-      c.write(data);
-    } catch (e) {}
-  });
-}
-
-tt.on('gift', d => {
-  // รอจนจบการส่งของขวัญแบบคอมโบของ TikTok
-  if (d.giftType === 1 && !d.repeatEnd) return;
-
-  const gift = MAP[d.giftName];
-  if (!gift) return;
-
-  const user = d.uniqueId || d.nickname || 'unknown';
-  const key = user + ':' + gift;
-  const count = Math.max(1, Number(d.repeatCount) || 1);
-
-  let combo = giftCombos.get(key);
-
-  if (!combo) {
-    combo = {
-      uniqueId: d.uniqueId,
-      nickname: d.nickname,
-      avatar: d.profilePictureUrl,
-      gift,
-      count: 0,
-      timer: null
-    };
-    giftCombos.set(key, combo);
-  }
-
-  combo.count += count;
-  combo.nickname = d.nickname || combo.nickname;
-  combo.avatar = d.profilePictureUrl || combo.avatar;
-
-  clearTimeout(combo.timer);
-
-  combo.timer = setTimeout(() => {
-    sendGift({
-      uniqueId: combo.uniqueId,
-      nickname: combo.nickname,
-      avatar: combo.avatar,
-      gift: combo.gift,
-      count: combo.count
-    });
-
-    giftCombos.delete(key);
-  }, COMBO_DELAY);
+tt.on('gift',d=>{
+ if(d.giftType===1&&!d.repeatEnd)return;
+ const msg=JSON.stringify({
+  uniqueId:d.uniqueId,nickname:d.nickname,avatar:d.profilePictureUrl,
+  gift:MAP[d.giftName]||'rose',count:d.repeatCount||1
+ });
+ clients.forEach(c=>c.write('data: '+msg+'\n\n'));
 });
