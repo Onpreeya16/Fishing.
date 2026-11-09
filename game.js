@@ -53,7 +53,7 @@ function toast(name,g,n){
   sfx('gift');const u=userOf(name),feed=document.getElementById('feed'),d=document.createElement('div');d.className='msg gt';
   const t=document.createElement('div'),b=document.createElement('b'),s=document.createElement('small'),l2=document.createElement('div'),im=new Image();
   b.textContent=u.nick;s.textContent=' @'+u.id;im.className='ti';im.src=g.i;l2.append('ส่ง ',im,' '+g.l+' ×'+n);t.append(b,s,l2);d.append(avEl(name,26),t);
-  feed.appendChild(d);while(feed.children.length>4)feed.firstChild.remove();setTimeout(()=>d.remove(),5000)
+  feed.appendChild(d);while(feed.children.length>2)feed.firstChild.remove();setTimeout(()=>d.remove(),5000)
 }
 
 /* ===== ตกปลา ===== */
