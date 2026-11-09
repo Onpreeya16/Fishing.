@@ -226,7 +226,6 @@ sb.onclick=()=>{spd=spd===1?10:1;sb.textContent='เร่งเวลา: x'+sp
 const sndb = document.getElementById('snd');
 sndb.textContent = 'เสียง: ปิด';console.log('GAME JS LOADED', typeof ac, typeof sfx, muted);
 
-
 sndb.onclick = async () => {
   muted = !muted;
   sndb.textContent = 'เสียง: ' + (muted ? 'ปิด' : 'เปิด');
@@ -258,7 +257,7 @@ addEventListener('pointerdown', () => {
   if (!muted) ac();
 });
 
-
+['น้องผัก','ไข่เจียวรักแมว','Sriwan','บักแป้ง','MUTITA','ฝนไม่โอ','BaiFern','Kittisak'].forEach((n,i)=>setTimeout(()=>onGift({name:n,gift:i%2?'heart':'rose'}),i*500));
 updateUI();
 requestAnimationFrame(frame);
 
