@@ -1,6 +1,6 @@
 
 /* ===== เสียง: แก้ Safari / Chrome iPhone ===== */
-let AC = null, muted = false, NB = null;
+let AC = null, muted = true, NB = null;
 const lastS = {};
 let audioUnlocking = null;
 
