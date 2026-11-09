@@ -1,1 +1,1 @@
-{"name":"fishing","main":"server.js","scripts":{"start":"node server.js"},"dependencies":{"tiktok-live-connector":"*"}}
+{"name":"fishing","main":"server.js","scripts":{"start":"node server.js"},"dependencies":{"tiktok-live-connector":"1"}}
