@@ -216,6 +216,7 @@ addEventListener('pointerdown',()=>{if(TTS_OK){try{const u=new SpeechSynthesisUt
 /* ===== ป๊อปอัปตกปลา ===== */
 const popQ=[];let pop=null,parts=[],lastP=0;
 function catchPop(name,k,txt,g){
+  txt=pickTip(RAR[k]);
   const w=+(g.sz[0]+(g.sz[1]-g.sz[0])*Math.min(1,Math.random()*.55+k*.15)).toFixed(1),tier=k===3?2:(k===2||w>=5)?1:0;
   popQ.push({name,k,txt,w,tier});
   if(popQ.filter(p=>!p.tier).length>4)popQ.splice(popQ.findIndex(p=>!p.tier),1)
