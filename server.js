@@ -1,35 +1,40 @@
-const http=require('http'),fs=require('fs'),path=require('path');
-const {WebcastPushConnection}=require('tiktok-live-connector');
-const USER='thesecretlore';
-const clients=[];
-const MAP={'Rose':'rose'};
-const TYPE={'.html':'text/html','.js':'text/javascript'};
+const express = require('express');
+const http = require('http');
+const { WebSocketServer } = require('ws');
+const { WebcastPushConnection } = require('tiktok-live-connector');
 
-http.createServer((req,res)=>{
- if(req.url==='/events'){
-  res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache'});
-  clients.push(res);
-  req.on('close',()=>clients.splice(clients.indexOf(res),1));
-  return;
- }
- if(req.url==='/ping'){res.writeHead(200);return res.end('ok')}
- const f=path.join(__dirname,req.url==='/'?'index.html':req.url.split('?')[0]);
- fs.readFile(f,(e,d)=>{
-  if(e){res.writeHead(404);return res.end()}
-  res.writeHead(200,{'Content-Type':TYPE[path.extname(f)]||'text/plain'});
-  res.end(d);
- });
-}).listen(process.env.PORT||80,()=>console.log('Fishing Server is running'));
+const app = express();
+app.use(express.static(__dirname));
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
-setInterval(()=>clients.forEach(c=>c.write(':\n\n')),25000);
+const send = (o) => {
+  const s = JSON.stringify(o);
+  wss.clients.forEach((c) => c.readyState === 1 && c.send(s));
+};
 
-const tt=new WebcastPushConnection(USER);
-tt.connect().then(()=>console.log('connected to TikTok')).catch(e=>console.log('error: '+e.message));
-tt.on('gift',d=>{
- if(d.giftType===1&&!d.repeatEnd)return;
- const msg=JSON.stringify({
-  uniqueId:d.uniqueId,nickname:d.nickname,avatar:d.profilePictureUrl,
-  gift:MAP[d.giftName]||'rose',count:d.repeatCount||1
- });
- clients.forEach(c=>c.write('data: '+msg+'\n\n'));
-});
+const user = process.env.TIKTOK_USER || process.argv[2];
+if (user) {
+  const conn = new WebcastPushConnection(user);
+  const connect = () =>
+    conn.connect()
+      .then(() => console.log('เชื่อม TikTok แล้ว:', user))
+      .catch((e) => { console.error(e.message || e); setTimeout(connect, 10000); });
+  conn.on('gift', (d) => {
+    if (d.giftType === 1 && !d.repeatEnd) return; // รอจบคอมโบก่อน
+    send({
+      type: 'gift',
+      name: d.giftName,
+      user: d.nickname || d.uniqueId,
+      count: d.repeatCount || 1,
+      diamonds: d.diamondCount
+    });
+  });
+  conn.on('disconnected', () => setTimeout(connect, 5000));
+  connect();
+} else {
+  console.log('ไม่ได้ใส่ชื่อ TikTok: เล่นแบบทดสอบได้ (กดปุ่มของขวัญในเกม)');
+}
+
+const port = process.env.PORT || 3000;
+server.listen(port, () => console.log('เปิดที่ http://localhost:' + port));
