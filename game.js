@@ -92,7 +92,8 @@ function tag(x,y,sc,name,p){
   ctx.restore()
 }
 function done(c){
-  const r=RAR[c.f.r],txt=r.t[Math.floor(Math.random()*r.t.length)];
+  const r=RAR[c.f.r],txt=pickTip(r);
+
   catchPop(c.name,c.f.r,txt,c.g);
   score[c.name]=(score[c.name]||0)+r.p;
   released++;updateUI();
