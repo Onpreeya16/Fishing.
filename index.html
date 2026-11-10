@@ -140,6 +140,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--lotus);outline-
     </div>
   </div>
 </div>
+<script>
+function showErr(t){var d=document.createElement('pre');d.style.cssText='position:fixed;z-index:99999;top:0;left:0;right:0;margin:0;background:#400;color:#fff;font-size:12px;padding:8px;white-space:pre-wrap';d.textContent=t;document.body.appendChild(d)}
+window.onerror=function(m,s,l,c){showErr(m+'\n'+s+' บรรทัด '+l+':'+c)};
+addEventListener('error',function(e){if(e.target&&e.target.src)showErr('โหลดไฟล์ไม่ได้: '+e.target.src)},true);
+</script>
+
 <script src="data.js"></script>
 <script src="fx.js"></script>
 <script src="game.js"></script>
