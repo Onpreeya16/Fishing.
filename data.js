@@ -46,7 +46,6 @@ const RAR=[
  ]}
 ];
 
-
 const ic=e=>'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#0b1020"/><text x="32" y="46" font-size="38" text-anchor="middle">'+e+'</text></svg>');
 
 const GIFT={
@@ -57,6 +56,7 @@ const GIFT={
  finger:{lv:5,cast:1,boost:70,luck:4,sz:[1,15],bait:'เหยื่อทองคำ',l:'ฟิงเกอร์ฮาร์ท',i:ic('💝'),d:'ดวงดีมาก ปลาทอง+'},
  hug:{lv:6,cast:3,boost:90,luck:5,sz:[2,30],bait:'เหยื่อมังกร',l:'กอดมังกร',i:ic('🐉'),d:'เบ็ด 3 คัน ปลาหายาก'}
 };
+
 function pickTip(f){
  if(!f.bag||!f.bag.length){
   f.bag=f.t.map((_,i)=>i);
@@ -64,6 +64,7 @@ function pickTip(f){
  }
  return f.t[f.bag.pop()];
 }
+function pickBlessing(i){return pickTip(RAR[i])}
 
 const NAMES=['น้องผัก','ไข่เจียวรักแมว','Sriwan','บักแป้ง','pitchayapa','MUTITA','ฝนไม่โอ','Kittisak','BaiFern','แบมเองจ๊ะ'];
 
