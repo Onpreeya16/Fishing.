@@ -2,9 +2,10 @@ const cv = document.getElementById('c'), g = cv.getContext('2d'), W = 720, H = 1
 cv.width = W; cv.height = H;
 const SANS = "'Noto Sans Thai',Sarabun,Tahoma,sans-serif";
 const TEST = location.search.includes('test'), seg = new Intl.Segmenter('th', { granularity: 'word' });
+const VOICE = !location.search.includes('voice=off'); // ?voice=off ปิดเสียงอ่านของเกม (ใช้เสียงอ่านจากโปรแกรมอื่นแทน)
 const IDLE = 'ส่งของขวัญเพื่อรับคำอวยพร พิมพ์ สาธุ ในแชตเพื่อน้อมรับ';
 const queue = [], users = {}, counts = { altar: 0, rice: 0, fish: 0 }, shared = {}, ST = {}, walkers = [], sadhu = [], lastSadhu = {}, crowd = [];
-let hits = [], pops = [], lastStep = 0, lastIdle = performance.now(), started = false, goal = 0, goalMax = 35, goalFlash = 0;
+let hits = [], pops = [], pq = [], lastStep = 0, lastIdle = performance.now(), started = false, goal = 0, goalMax = 35, goalFlash = 0;
 const bg = new Image(); bg.src = 'bg.jpg';
 // ทอยปวย: ไม่ต้องตอบใช่/ไม่ใช่ ให้เป็นคำอวยพรปกติ
 BLESS.buei = ['ขอให้ทุกความตั้งใจสมหวัง สิ่งที่ขอเป็นจริงทุกประการ', 'ขอให้เจ้าประทานพร มีโชคมีชัย ทำสิ่งใดก็สำเร็จ', 'ขอให้ใจสงบ เดินทางไหนก็ราบรื่น มีแต่เรื่องดี'];
@@ -64,7 +65,7 @@ function onChat(m) {
       lastSadhu[m.id] = n; sadhu.push({ n: m.user, pic: m.pic, t: performance.now() });
       if (sadhu.length > 4) sadhu.shift();
       FX.tone(660, 0.5, 'sine', 0.08);
-      if (!FX.talking) FX.say(trunc(m.user, 10) + ' สาธุ');
+      if (VOICE && !FX.talking) FX.say(trunc(m.user, 10) + ' สาธุ');
     }
     return;
   }
@@ -88,22 +89,27 @@ function run(it) {
 function arrive(w, now) {
   w.arrivedAt = now;
   const r = makeReading(w.st), s = ST[w.st];
-  const p = Object.assign(r, { user: w.n, pic: w.pic, handle: w.handle, st: w.st, t0: now, end: now + 9000 });
-  pops.unshift(p); if (pops.length > 2) pops.pop();
+  const txt = 'คุณ ' + w.n + '. ' + r.th + '. ' + (r.lv >= 0 ? 'ระดับ ' + LEVELS[r.lv].n + '. ' : '') + r.lines.join('. ');
+  pq.push(Object.assign(r, { user: w.n, pic: w.pic, handle: w.handle, st: w.st, txt, t0: 0, end: 0 }));
+  if (pq.length > 25) pq.shift();
   if (counts[w.st] !== undefined) counts[w.st]++;
   sfx(w.st); FX.burst(s.cx, s.cy, 36);
-  const txt = 'คุณ ' + w.n + '. ' + r.th + '. ' + (r.lv >= 0 ? 'ระดับ ' + LEVELS[r.lv].n + '. ' : '') + r.lines.join('. ');
-  if (FX.sq.length < 2) FX.say(txt, () => { p.end = 1e12; }, () => { p.end = Math.max(p.t0 + 5000, performance.now() + 1500); });
   if (++goal >= goalMax) {
     goal = 0; goalMax = Math.min(100, goalMax + 5); goalFlash = now;
-    FX.gong(); FX.burst(W / 2, 640, 80, '#ff5a36'); FX.say('ครบเป้าหมายร่วมทำบุญ ขอบคุณทุกคนที่ร่วมทำบุญ');
+    FX.gong(); FX.burst(W / 2, 640, 80, '#ff5a36'); VOICE && FX.say('ครบเป้าหมายร่วมทำบุญ ขอบคุณทุกคนที่ร่วมทำบุญ');
   }
 }
 function step(now) {
   if (!started) return;
-  const active = pops.length > 0;
-  if (queue.length && now - lastStep > (queue.length > 10 ? 250 : 600) && walkers.filter((w) => !w.arrivedAt).length < 6) { lastStep = now; run(queue.shift()); }
-  else if (!queue.length && !active && !FX.talking && !FX.sq.length && now - lastIdle > 45000) { lastIdle = now; FX.say(IDLE); }
+  // ป๊อปอัปคำอวยพรขึ้นทีละใบ: ใบใหม่ขึ้นเมื่อใบเก่าหายแล้ว
+  if (!pops.length && pq.length) {
+    const p = pq.shift(); p.t0 = now; pops.push(p);
+    if (VOICE) { p.end = 1e12; FX.say(p.txt, null, () => { p.end = Math.max(p.t0 + 5000, performance.now() + 1500); }); }
+    else p.end = now + (pq.length > 3 ? 4500 : 7000);
+  }
+  const active = pops.length > 0 || pq.length > 0;
+  if (queue.length && now - lastStep > (queue.length > 10 ? 250 : 600) && walkers.filter((w) => !w.arrivedAt).length < 6 && pq.length < 8) { lastStep = now; run(queue.shift()); }
+  else if (!queue.length && !active && !FX.talking && !FX.sq.length && now - lastIdle > 45000) { lastIdle = now; VOICE && FX.say(IDLE); }
 }
 
 // ---------- วาด ----------
@@ -165,19 +171,18 @@ function drawGifts() {
   });
 }
 
-// ป๊อปอัปคำอวยพรใต้แผงของขวัญ (สูงสุด 2 ใบ)
+// ป๊อปอัปคำอวยพรใต้แผงของขวัญ (ทีละใบ)
 function drawPops(t) {
   for (let i = pops.length - 1; i >= 0; i--) if (t > pops[i].end) pops.splice(i, 1);
-  const top = 86 + Math.ceil(GIFTS.length / 4) * 44 + 14;
-  pops.forEach((p, i) => {
-    const y = top + i * 100;
+  const y = 86 + Math.ceil(GIFTS.length / 4) * 44 + 14;
+  pops.forEach((p) => {
     g.globalAlpha = Math.min(1, (p.end - t) / 400, (t - p.t0) / 250 + 0.01);
-    rr(14, y, 692, 92, 14); g.fillStyle = 'rgba(20,0,0,.88)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 2; g.stroke();
-    avatar(p.pic, 46, y + 28, 22, p.user);
-    tx(trunc(p.user, 12) + ' · ' + p.th, 80, y + 26, 20, '#ffd54a');
-    if (p.lv >= 0) tx(LEVELS[p.lv].n, 696, y + 26, 18, LEVELS[p.lv].c, 'right');
-    if (p.handle) tx('@' + trunc(p.handle, 20), 80, y + 44, 13, '#f0c0c0');
-    let ly = y + 62; p.lines.forEach((l) => { ly = wrap(l, 24, ly, 664, 19, 16, '#fff', 2); });
+    rr(14, y, 692, 124, 14); g.fillStyle = 'rgba(20,0,0,.88)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 2; g.stroke();
+    avatar(p.pic, 50, y + 32, 26, p.user);
+    tx(trunc(p.user, 12) + ' · ' + p.th, 90, y + 30, 22, '#ffd54a');
+    if (p.lv >= 0) tx(LEVELS[p.lv].n, 696, y + 30, 20, LEVELS[p.lv].c, 'right');
+    if (p.handle) tx('@' + trunc(p.handle, 20), 90, y + 50, 14, '#f0c0c0');
+    let ly = y + 74; p.lines.forEach((l) => { ly = wrap(l, 26, ly, 660, 22, 18, '#fff', 2); });
     g.globalAlpha = 1;
   });
 }
