@@ -3,14 +3,21 @@ cv.width = W; cv.height = H;
 const SANS = "'Noto Sans Thai',Sarabun,Tahoma,sans-serif";
 const TEST = location.search.includes('test'), seg = new Intl.Segmenter('th', { granularity: 'word' });
 const VOICE = !location.search.includes('voice=off'); // ?voice=off ปิดเสียงอ่านของเกม (ใช้เสียงอ่านจากโปรแกรมอื่นแทน)
-const IDLE = 'ส่งของขวัญเพื่อรับคำอวยพร พิมพ์ สาธุ ในแชตเพื่อน้อมรับ';
-const queue = [], users = {}, counts = { altar: 0, rice: 0, fish: 0 }, shared = {}, ST = {}, walkers = [], sadhu = [], lastSadhu = {}, crowd = [];
+const IDLE = 'ส่งของขวัญเพื่อรับคำอวยพร กดหัวใจครบ 50 ครั้งเพื่อเสี่ยงเซียมซี พิมพ์ สาธุ ในแชตเพื่อน้อมรับ';
+const POP_MS = 6500;   // ป๊อปอัปคำอวยพรแสดงกี่มิลลิวินาที
+const MAXP = 24;       // จำนวนคนสูงสุดบนจอ เต็มแล้วคนเก่าสุดจะค่อยๆ จางหายไป
+const HEARTS = 50;     // กดหัวใจครบกี่ครั้งถึงได้เสี่ยงเซียมซี 1 ครั้ง
+const queue = [], users = {}, counts = { altar: 0, rice: 0, fish: 0 }, shared = {}, ST = {}, walkers = [], sadhu = [], lastSadhu = {}, likes = {};
 let hits = [], pops = [], pq = [], lastStep = 0, lastIdle = performance.now(), started = false, goal = 0, goalMax = 35, goalFlash = 0;
 const bg = new Image(); bg.src = 'bg.jpg';
 // ทอยปวย: ไม่ต้องตอบใช่/ไม่ใช่ ให้เป็นคำอวยพรปกติ
 BLESS.buei = ['ขอให้ทุกความตั้งใจสมหวัง สิ่งที่ขอเป็นจริงทุกประการ', 'ขอให้เจ้าประทานพร มีโชคมีชัย ทำสิ่งใดก็สำเร็จ', 'ขอให้ใจสงบ เดินทางไหนก็ราบรื่น มีแต่เรื่องดี'];
 const _mk = makeReading;
 makeReading = (id) => { const o = _mk(id); if (id === 'buei') o.lines = [pk(BLESS.buei)]; return o; };
+
+// คำพูดตอนอ่านออกเสียง: "ขอบคุณคุณ ... <ทำอะไร> <คำอวยพรสั้นๆ>"
+const ACT = { altar: 'ไหว้เทพประธาน', rice: 'แจกข้าวสาร', fish: 'ปล่อยปลาคาร์ป', almanac: 'ดูวันดีวันห้าม', work: 'ดูดวงการงาน', love: 'ดูดวงความรัก', study: 'ดูดวงการเรียน', money: 'ดูดวงการเงิน', buei: 'ทอยปวย', qian: 'เสี่ยงเซียมซี' };
+const LUCK = ['โชคดีมีชัย การงานราบรื่น', 'โชคดีมีชัย ทำสิ่งใดก็ราบรื่น', 'ใจเย็นๆ รอจังหวะดีๆ จะมาถึง', 'ระวังตัวสักนิด แล้วจะปลอดภัย'];
 
 // [กลางอาคาร x,y, จุดยืนหน้าอาคาร x,y] พิกัดบนภาพ 720x1280
 const POS = {
@@ -33,19 +40,19 @@ function posAt(p, d) {
   return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, done: 0 };
 }
 const route = (a, b) => mkPath([a, { x: 361, y: a.y }, { x: 361, y: b.y }, b]);
-const spot = (s) => ({ x: s.fx - 30 + Math.random() * 60, y: s.fy + 14 + Math.random() * 14 });
-
-function newGoal(c, t) { c.p = route({ x: c.x, y: c.y }, spot(STATIONS[Math.floor(Math.random() * STATIONS.length)])); c.t0 = t; c.wait = 0; }
-for (let i = 0; i < 9; i++) { const c = { x: 361 + (Math.random() - 0.5) * 200, y: 1000 + Math.random() * 100, col: 'hsl(' + Math.floor(Math.random() * 360) + ',55%,55%)' }; newGoal(c, performance.now()); crowd.push(c); }
-function stepCrowd(t) {
-  crowd.forEach((c) => {
-    if (c.wait) { if (t < c.wait) return; newGoal(c, t); }
-    const r = posAt(c.p, (t - c.t0) * 0.05); c.x = r.x; c.y = r.y; c.mv = !r.done;
-    if (r.done) c.wait = t + 2000 + Math.random() * 4000;
-  });
+// เลือกจุดยืนหน้าอาคารที่ห่างจากคนอื่นมากที่สุด (ลดการซ้อนทับกัน)
+function spot(s) {
+  let best = null, bd = -1;
+  for (let i = 0; i < 10; i++) {
+    const c = { x: s.fx - 55 + Math.random() * 110, y: s.fy + 10 + Math.random() * 50 };
+    let md = 1e9;
+    walkers.forEach((w) => { if (w.leave) return; const d = Math.hypot((w.dest.x - c.x) / 2, w.dest.y - c.y); if (d < md) md = d; });
+    if (md > bd) { bd = md; best = c; }
+  }
+  return best;
 }
 
-// ---------- ของขวัญ / แชต ----------
+// ---------- ของขวัญ / แชต / หัวใจ ----------
 function matchGift(name) {
   const n = String(name || '').toLowerCase();
   return GIFTS.find((q) => q.m.some((x) => (q.x ? n === x : n.includes(x))));
@@ -57,6 +64,16 @@ function onGift(m) {
   for (let i = 0; i < n; i++) q.st.forEach((st) => enqueue({ st, user: m.user, id: m.id, pic: m.pic, handle: m.handle, f: q.f }));
 }
 function onShare(m) { if (shared[m.id]) return; shared[m.id] = 1; enqueue({ st: 'altar', user: m.user, id: m.id, pic: m.pic, handle: m.handle }); }
+// กดหัวใจสะสมรายคน ครบ HEARTS ครั้ง = เสี่ยงเซียมซี 1 ครั้ง
+function onLike(m) {
+  const k = m.id || m.user || '?';
+  likes[k] = (likes[k] || 0) + Math.max(1, m.count || 1);
+  let n = 0;
+  while (likes[k] >= HEARTS && n < 3) {
+    likes[k] -= HEARTS; n++;
+    enqueue({ st: 'qian', user: m.user, id: m.id, pic: m.pic, handle: m.handle });
+  }
+}
 function onChat(m) {
   const raw = String(m.text || '').trim();
   if (raw.includes('สาธุ')) {
@@ -79,17 +96,21 @@ function sfx(st) {
   else FX.chime();
 }
 
-// ออกจากทางเข้าด้านล่าง เดินขึ้นพรมแดงไปหน้าอาคาร
+// ออกจากทางเข้าด้านล่าง เดินขึ้นพรมแดงไปหน้าอาคาร และยืนอยู่จนกว่าจอจะเต็ม
 function run(it) {
   const now = performance.now(), a = { x: 361 + (Math.random() - 0.5) * 60, y: 1200 }, n = it.user || 'ผู้ใจบุญ';
-  walkers.push({ n, pic: it.pic, handle: it.handle, id: it.id, st: it.st, p: route(a, spot(ST[it.st])), t0: now, arrivedAt: 0, cx: a.x, cy: a.y, col: 'hsl(' + (hs(n) % 360) + ',70%,60%)' });
-  if (walkers.length > 40) walkers.shift();
+  // จอเต็ม: ให้คนที่ยืนอยู่นานที่สุดค่อยๆ จางหายไป 1 คน
+  const stay = walkers.filter((w) => !w.leave);
+  if (stay.length >= MAXP) { const old = stay.find((w) => w.arrivedAt); if (old) old.leave = now; }
+  const dest = spot(ST[it.st]);
+  walkers.push({ n, pic: it.pic, handle: it.handle, id: it.id, st: it.st, p: route(a, dest), dest, t0: now, arrivedAt: 0, leave: 0, cx: a.x, cy: a.y, col: 'hsl(' + (hs(n) % 360) + ',70%,60%)' });
 }
-// ถึงแล้ว: เสียง/เอฟเฟกต์ทันที แล้วต่อคิวอ่านคำทำนายออกเสียง (กล่องข้อความขึ้นพร้อมเริ่มพูด)
+// ถึงแล้ว: เสียง/เอฟเฟกต์ทันที แล้วต่อคิวป๊อปอัปคำอวยพร (อ่านออกเสียงพร้อมกล่องข้อความ)
 function arrive(w, now) {
   w.arrivedAt = now;
   const r = makeReading(w.st), s = ST[w.st];
-  const txt = 'คุณ ' + w.n + '. ' + r.th + '. ' + (r.lv >= 0 ? 'ระดับ ' + LEVELS[r.lv].n + '. ' : '') + r.lines.join('. ');
+  const msg = w.st === 'qian' ? LUCK[r.lv >= 0 ? r.lv : 1] : r.lines[0];
+  const txt = 'ขอบคุณคุณ ' + trunc(w.n, 10) + ' ' + ACT[w.st] + '. ' + msg;
   pq.push(Object.assign(r, { user: w.n, pic: w.pic, handle: w.handle, st: w.st, txt, t0: 0, end: 0 }));
   if (pq.length > 25) pq.shift();
   if (counts[w.st] !== undefined) counts[w.st]++;
@@ -101,11 +122,10 @@ function arrive(w, now) {
 }
 function step(now) {
   if (!started) return;
-  // ป๊อปอัปคำอวยพรขึ้นทีละใบ: ใบใหม่ขึ้นเมื่อใบเก่าหายแล้ว
+  // ป๊อปอัปคำอวยพรขึ้นทีละใบ ใบละ POP_MS (6.5 วินาที) แล้วใบถัดไปขึ้นต่อ
   if (!pops.length && pq.length) {
-    const p = pq.shift(); p.t0 = now; pops.push(p);
-    if (VOICE) { p.end = 1e12; FX.say(p.txt, null, () => { p.end = Math.max(p.t0 + 5000, performance.now() + 1500); }); }
-    else p.end = now + (pq.length > 3 ? 4500 : 7000);
+    const p = pq.shift(); p.t0 = now; p.end = now + POP_MS; pops.push(p);
+    if (VOICE && FX.sq.length < 2) FX.say(p.txt);
   }
   const active = pops.length > 0 || pq.length > 0;
   if (queue.length && now - lastStep > (queue.length > 10 ? 250 : 600) && walkers.filter((w) => !w.arrivedAt).length < 6 && pq.length < 8) { lastStep = now; run(queue.shift()); }
@@ -196,22 +216,24 @@ function drawSt(s, t) {
   if (counts[s.id] !== undefined) lab(s.th + ' ×' + counts[s.id], s.cx, s.cy - 78, 18, '#ffd54a');
 }
 
+// มีตัวคนเฉพาะคนที่ส่งของขวัญ/กดหัวใจครบ ยืนอยู่จนกว่าจอจะเต็ม แล้วคนเก่าสุดจะค่อยๆ จางหาย
 function drawPeople(t) {
-  for (let i = walkers.length - 1; i >= 0; i--) if (walkers[i].arrivedAt && t - walkers[i].arrivedAt > 5000) walkers.splice(i, 1);
-  crowd.forEach((c) => person(c.x, c.y, c.col, t, c.mv, 1));
-  walkers.forEach((w) => {
+  for (let i = walkers.length - 1; i >= 0; i--) if (walkers[i].leave && t - walkers[i].leave > 1000) walkers.splice(i, 1);
+  walkers.slice().sort((a, b) => a.cy - b.cy).forEach((w) => {
     if (!w.arrivedAt) { const r = posAt(w.p, (t - w.t0) * 0.17); w.cx = r.x; w.cy = r.y; if (r.done) arrive(w, t); }
-    g.globalAlpha = Math.min(1, (t - w.t0) / 400);
+    let a = Math.min(1, (t - w.t0) / 400);
+    if (w.leave) a *= Math.max(0, 1 - (t - w.leave) / 1000);
+    g.globalAlpha = a;
     person(w.cx, w.cy, w.col, t, !w.arrivedAt, 1.2);
-    g.globalAlpha = 1;
     plate(w, w.cx, w.cy + 34);
-    if (!w.arrivedAt || t - w.arrivedAt < 3500) {
+    if (!w.leave && (!w.arrivedAt || t - w.arrivedAt < 3500)) {
       const bx = Math.max(4, Math.min(W - 172, w.cx - 84)), by = w.cy - 80;
       rr(bx, by, 168, 50, 12); g.fillStyle = 'rgba(255,255,255,.95)'; g.fill();
       avatar(w.pic, bx + 28, by + 25, 19, w.n);
       tx(ST[w.st].th, bx + 102, by + 21, 14, '#5c0f0f', 'center');
       tx(trunc(w.n, 10), bx + 102, by + 40, 13, '#9b1c1c', 'center');
     }
+    g.globalAlpha = 1;
   });
 }
 
@@ -226,10 +248,10 @@ function draw(t) {
   lab('🎯 ' + goal + '/' + goalMax, 12, 32, 22, '#ffd54a', 'left');
   lab('คิว ' + queue.length, W - 12, 32, 22, '#fff', 'right');
   STATIONS.forEach((s) => drawSt(s, t));
-  stepCrowd(t); drawPeople(t);
+  drawPeople(t);
   drawGifts(); drawPops(t);
   g.fillStyle = 'rgba(20,0,0,.6)'; rr(14, 1226, 692, 50, 14); g.fill();
-  wrap('ส่งของขวัญเพื่อรับคำอวยพร · พิมพ์ "สาธุ" ในแชตเพื่อน้อมรับ', 30, 1258, 660, 24, 20, '#f0c0c0', 1);
+  wrap('ส่งของขวัญ · กดหัวใจครบ ' + HEARTS + ' ครั้งเพื่อเสี่ยงเซียมซี · พิมพ์ "สาธุ"', 30, 1258, 660, 24, 20, '#f0c0c0', 1);
   for (let i = sadhu.length - 1; i >= 0; i--) if (t - sadhu[i].t > 3500) sadhu.splice(i, 1);
   sadhu.forEach((s, i) => {
     g.globalAlpha = Math.min(1, (3500 - (t - s.t)) / 500);
@@ -259,11 +281,15 @@ cv.addEventListener('click', (e) => {
 });
 // เปิดใน OBS ที่แตะไม่ได้: ถ้าเบราว์เซอร์อนุญาตเสียงอัตโนมัติ ให้เริ่มเอง
 setTimeout(() => { try { FX.init(); if (FX.ctx.state === 'running' && !started) begin(); } catch (e) {} }, 1500);
-if (TEST) document.addEventListener('keydown', (e) => { if (e.key === 's') onChat({ id: 'k' + Math.random(), user: 'ทดสอบสาธุ', text: 'สาธุ' }); });
+// โหมดทดสอบ: กด s = สาธุ, กด l = กดหัวใจ 50 ครั้ง (ได้เซียมซี)
+if (TEST) document.addEventListener('keydown', (e) => {
+  if (e.key === 's') onChat({ id: 'k' + Math.random(), user: 'ทดสอบสาธุ', text: 'สาธุ' });
+  if (e.key === 'l') onLike({ id: 'tl' + Math.floor(Math.random() * 30), user: 'ทดสอบหัวใจ', count: HEARTS });
+});
 
 function connect() {
   const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.t === 'gift') onGift(m); else if (m.t === 'chat') onChat(m); else if (m.t === 'share') onShare(m); };
+  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.t === 'gift') onGift(m); else if (m.t === 'chat') onChat(m); else if (m.t === 'share') onShare(m); else if (m.t === 'like') onLike(m); };
   ws.onclose = () => setTimeout(connect, 2000);
 }
 connect();
