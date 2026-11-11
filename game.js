@@ -49,15 +49,15 @@ function enqueue(it) { if (queue.length >= 40) return; if (it.f) queue.unshift(i
 function onGift(m) {
   const q = matchGift(m.name); if (!q) return;
   const n = Math.min(m.count || 1, 5);
-  for (let i = 0; i < n; i++) q.st.forEach((st) => enqueue({ st: st === 'altar' ? 'altar' : st, user: m.user, id: m.id, f: q.f }));
+  for (let i = 0; i < n; i++) q.st.forEach((st) => enqueue({ st, user: m.user, id: m.id, pic: m.pic, handle: m.handle, f: q.f }));
 }
-function onShare(m) { if (shared[m.id]) return; shared[m.id] = 1; enqueue({ st: 'altar', user: m.user, id: m.id }); }
+function onShare(m) { if (shared[m.id]) return; shared[m.id] = 1; enqueue({ st: 'altar', user: m.user, id: m.id, pic: m.pic, handle: m.handle }); }
 function onChat(m) {
   const raw = String(m.text || '').trim();
   if (raw.includes('สาธุ')) {
     const n = Date.now();
     if (cur && n - (lastSadhu[m.id] || 0) > 10000) {
-      lastSadhu[m.id] = n; sadhu.push({ n: m.user, t: performance.now() });
+      lastSadhu[m.id] = n; sadhu.push({ n: m.user, pic: m.pic, t: performance.now() });
       if (sadhu.length > 4) sadhu.shift();
       FX.tone(660, 0.5, 'sine', 0.08);
       if (!FX.talking) FX.say(trunc(m.user, 10) + ' สาธุ');
@@ -80,15 +80,15 @@ function sfx(st) {
 
 // ออกจากทางเข้าด้านล่าง เดินขึ้นพรมแดงไปหน้าอาคาร
 function run(it) {
-  const now = performance.now(), a = { x: 361 + (Math.random() - 0.5) * 60, y: 1100 }, n = it.user || 'ผู้ใจบุญ';
-  walkers.push({ n, id: it.id, st: it.st, p: route(a, spot(ST[it.st])), t0: now, arrivedAt: 0, cx: a.x, cy: a.y, col: 'hsl(' + (hs(n) % 360) + ',70%,60%)' });
+  const now = performance.now(), a = { x: 361 + (Math.random() - 0.5) * 60, y: 1110 }, n = it.user || 'ผู้ใจบุญ';
+  walkers.push({ n, pic: it.pic, handle: it.handle, id: it.id, st: it.st, p: route(a, spot(ST[it.st])), t0: now, arrivedAt: 0, cx: a.x, cy: a.y, col: 'hsl(' + (hs(n) % 360) + ',70%,60%)' });
   if (walkers.length > 40) walkers.shift();
 }
 // ถึงแล้ว: เสียง/เอฟเฟกต์ทันที แล้วต่อคิวอ่านคำทำนายออกเสียง (กล่องข้อความขึ้นพร้อมเริ่มพูด)
 function arrive(w, now) {
   w.arrivedAt = now;
   const a = animalOf(w.id, w.n), r = makeReading(w.st), s = ST[w.st];
-  const c = Object.assign(r, { user: w.n, a, st: w.st, end: 0, t0: 0 });
+  const c = Object.assign(r, { user: w.n, pic: w.pic, handle: w.handle, a, st: w.st, end: 0, t0: 0 });
   if (counts[w.st] !== undefined) counts[w.st]++;
   sfx(w.st); FX.burst(s.cx, s.cy, 36);
   const txt = 'คุณ ' + w.n + '. ' + r.th + '. ปี' + ANIMALS[a] + '. ' + (r.lv >= 0 ? 'ระดับ ' + LEVELS[r.lv].n + '. ' : '') + r.lines.join('. ');
@@ -130,14 +130,32 @@ function person(x, y, col, t, mv, sc) {
   g.restore();
 }
 
-function panel(side, x, title) {
-  rr(x, 88, 348, 226, 12); g.fillStyle = 'rgba(40,0,0,.85)'; g.fill(); g.strokeStyle = '#e8b923'; g.lineWidth = 2; g.stroke();
-  tx(title, x + 174, 114, 18, '#ffd54a', 'center');
-  let y = 140;
-  GIFTS.filter((q) => q.s === side).forEach((q) => {
-    tx(q.e + ' ' + q.n + ' › ' + q.a, x + 12, y, 15, '#fff');
-    hits.push({ x, y: y - 18, w: 348, h: 26, q });
-    y += 26;
+const AV = {}, GI = {};
+const ICONKEY = { light: 'light', windvane: 'windvane', rose: 'rose', dallah: 'dallah', mantap: 'mantap', glow: 'glow', 'love you so much': 'love', tiktok: 'tiktok', encore: 'encore', 'finger heart': 'finger', diny: 'diny', doughnut: 'doughnut' };
+GIFTS.forEach((q) => { const k = ICONKEY[q.m[0]]; if (k && typeof ICONS !== 'undefined' && ICONS[k]) { const im = new Image(); im.src = ICONS[k]; GI[q.n] = im; } });
+function avatar(url, x, y, r, name) {
+  let im = null;
+  if (url) { im = AV[url]; if (!im) { im = AV[url] = new Image(); im.referrerPolicy = 'no-referrer'; im.src = url; } }
+  g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.closePath(); g.clip();
+  if (im && im.complete && im.naturalWidth) g.drawImage(im, x - r, y - r, r * 2, r * 2);
+  else { g.fillStyle = 'hsl(' + (hs(name) % 360) + ',60%,50%)'; g.fillRect(x - r, y - r, r * 2, r * 2); tx([...String(name || '?')][0] || '?', x, y + r * 0.35, r, '#fff', 'center'); }
+  g.restore(); g.beginPath(); g.arc(x, y, r, 0, 7); g.lineWidth = 2; g.strokeStyle = '#ffd54a'; g.stroke();
+}
+function fit(s, x, y, mw, size, col, bold) {
+  const f = () => { g.font = (bold ? 'bold ' : '') + size + 'px ' + SANS; }; f();
+  while (size > 8 && g.measureText(s).width > mw) { size--; f(); }
+  g.fillStyle = col; g.textAlign = 'left'; g.fillText(s, x, y);
+}
+// แผงของขวัญแสดงตลอด (การ์ดสไตล์เมนูของขวัญ TikTok)
+function drawGifts() {
+  g.fillStyle = 'rgba(10,10,20,.9)'; g.fillRect(0, 1108, W, 172);
+  GIFTS.forEach((q, i) => {
+    const x = 8 + (i % 5) * 140, y = 1114 + Math.floor(i / 5) * 54;
+    rr(x, y, 136, 50, 10); g.fillStyle = '#14161f'; g.fill(); g.strokeStyle = 'rgba(232,185,35,.6)'; g.lineWidth = 1.5; g.stroke();
+    const im = GI[q.n];
+    if (im && im.complete && im.naturalWidth) g.drawImage(im, x + 5, y + 5, 40, 40); else tx(q.e, x + 25, y + 34, 28, '#fff', 'center');
+    fit(q.n, x + 50, y + 22, 82, 14, '#fff', true); fit(q.a, x + 50, y + 40, 82, 11, '#ffd54a');
+    if (TEST) hits.push({ x, y, w: 136, h: 50, q });
   });
 }
 
@@ -160,10 +178,11 @@ function drawPeople(t) {
     g.globalAlpha = 1;
     lab(trunc(w.n, 8), w.cx, w.cy + 46, 13, '#fff');
     if (!w.arrivedAt || t - w.arrivedAt < 3500) {
-      const bx = Math.max(4, Math.min(W - 144, w.cx - 70)), by = w.cy - 74;
-      rr(bx, by, 140, 44, 10); g.fillStyle = 'rgba(255,255,255,.95)'; g.fill();
-      tx(ST[w.st].th, bx + 70, by + 19, 15, '#5c0f0f', 'center');
-      tx(trunc(w.n, 12), bx + 70, by + 37, 13, '#9b1c1c', 'center');
+      const bx = Math.max(4, Math.min(W - 172, w.cx - 84)), by = w.cy - 80;
+      rr(bx, by, 168, 50, 12); g.fillStyle = 'rgba(255,255,255,.95)'; g.fill();
+      avatar(w.pic, bx + 28, by + 25, 19, w.n);
+      tx(ST[w.st].th, bx + 102, by + 21, 14, '#5c0f0f', 'center');
+      tx(trunc(w.n, 10), bx + 102, by + 40, 13, '#9b1c1c', 'center');
     }
   });
 }
@@ -178,31 +197,28 @@ function draw(t) {
   lab('ดูดวงเพื่อความบันเทิง', W / 2, 76, 13, '#f0c0c0');
   lab('🎯 ' + goal + '/' + goalMax, 12, 30, 18, '#ffd54a', 'left');
   lab('คิว ' + queue.length, W - 12, 30, 18, '#fff', 'right');
-  if (TEST) { panel(0, 8, 'ส่งสติกเกอร์ทำบุญ'); panel(1, 364, 'ร่วมทำบุญ'); }
-  else {
-    const q = GIFTS[Math.floor(t / 3000) % GIFTS.length];
-    rr(60, 94, 600, 34, 17); g.fillStyle = 'rgba(40,0,0,.75)'; g.fill();
-    tx(q.e + ' ' + q.n + ' › ' + q.a, W / 2, 118, 20, '#fff', 'center');
-  }
   STATIONS.forEach((s) => drawSt(s, t));
   stepCrowd(t); drawPeople(t);
+  drawGifts();
   if (cur && t < cur.end) {
     g.globalAlpha = Math.min(1, (cur.end - t) / 500, (t - cur.t0) / 300 + 0.01);
-    rr(14, 1090, 692, 186, 16); g.fillStyle = 'rgba(20,0,0,.9)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 3; g.stroke();
-    tx(cur.zh + ' ' + cur.th, 28, 1124, 24, '#ffd54a');
-    tx(trunc(cur.user, 14) + ' · ปี' + ANIMALS[cur.a] + AEMO[cur.a], 692, 1124, 18, '#fff', 'right');
-    if (cur.lv >= 0) tx('ระดับ: ' + LEVELS[cur.lv].n, 28, 1152, 18, LEVELS[cur.lv].c);
-    let y = cur.lv >= 0 ? 1180 : 1160;
+    rr(14, 92, 692, 200, 16); g.fillStyle = 'rgba(20,0,0,.92)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 3; g.stroke();
+    avatar(cur.pic, 52, 136, 28, cur.user);
+    tx(cur.zh + ' ' + cur.th, 92, 122, 24, '#ffd54a');
+    tx(trunc(cur.user, 14) + ' · ปี' + ANIMALS[cur.a] + AEMO[cur.a], 692, 122, 18, '#fff', 'right');
+    if (cur.handle) tx('@' + trunc(cur.handle, 24), 92, 148, 14, '#f0c0c0');
+    if (cur.lv >= 0) tx('ระดับ: ' + LEVELS[cur.lv].n, 28, 180, 18, LEVELS[cur.lv].c);
+    let y = cur.lv >= 0 ? 206 : 186;
     cur.lines.forEach((l) => { y = wrap(l, 28, y, 660, 26, 20, '#fff', 2); });
     g.globalAlpha = 1;
   } else {
-    g.fillStyle = 'rgba(20,0,0,.6)'; rr(14, 1130, 692, 120, 16); g.fill();
-    wrap('ส่งของขวัญเพื่อดูดวง · พิมพ์ปีเกิด (เช่น 2540) หรือปีนักษัตร (เช่น มะเส็ง) ในแชต · พิมพ์ "สาธุ" เพื่อน้อมรับคำทำนาย', 30, 1170, 660, 28, 20, '#f0c0c0', 3);
+    g.fillStyle = 'rgba(20,0,0,.6)'; rr(14, 92, 692, 100, 16); g.fill();
+    wrap('ส่งของขวัญเพื่อดูดวง · พิมพ์ปีเกิด (เช่น 2540) หรือปีนักษัตร (เช่น มะเส็ง) ในแชต · พิมพ์ "สาธุ" เพื่อน้อมรับคำทำนาย', 30, 124, 660, 26, 17, '#f0c0c0', 3);
   }
   for (let i = sadhu.length - 1; i >= 0; i--) if (t - sadhu[i].t > 3500) sadhu.splice(i, 1);
   sadhu.forEach((s, i) => {
     g.globalAlpha = Math.min(1, (3500 - (t - s.t)) / 500);
-    lab('🙏 ' + trunc(s.n, 10) + ': สาธุ', 700, 1072 - i * 26, 18, '#ffd54a', 'right');
+    const y = 1072 - i * 34; avatar(s.pic, 692, y - 6, 14, s.n); lab('🙏 ' + trunc(s.n, 10) + ': สาธุ', 668, y, 18, '#ffd54a', 'right');
   });
   g.globalAlpha = 1;
   if (goalFlash && t - goalFlash < 4000) {
