@@ -1,9 +1,22 @@
 const FX = {
-  ctx: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null,
+  ctx: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null, unlocked: 0, dbg: 'TTS: ยังไม่ได้เริ่ม',
   init() {
     if (!this.ctx) { const A = window.AudioContext || window.webkitAudioContext; this.ctx = new A(); }
     if (this.ctx.state === 'suspended') this.ctx.resume();
     try { if (window.speechSynthesis) { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices(); } } catch (e) {}
+    this.unlock();
+  },
+  // มือถือต้องปลดล็อกเสียงพูดในจังหวะที่ผู้ใช้แตะจอ (เรียกจาก init ตอนแตะเริ่ม)
+  unlock() {
+    if (this.unlocked) return;
+    const ua = navigator.userActivation; if (ua && !ua.isActive) return; // ไม่ได้มาจากการแตะ ยังปลดล็อกไม่ได้
+    this.unlocked = 1; this.dbg = 'TTS: ปลดล็อกแล้ว';
+    try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'th-TH'; speechSynthesis.speak(u); } catch (e) {}
+    try {
+      if (!this.aud) this.aud = new Audio();
+      this.aud.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      const p = this.aud.play(); if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
   },
   tone(f, d, type, v, when, slide) {
     if (!this.ctx) return;
@@ -53,7 +66,7 @@ const FX = {
     const t = String(text).replace(/[\u3400-\u9fff]/g, '').replace(/[·›\/]/g, ', ').replace(/[^\u0E00-\u0E7Fa-zA-Z0-9 ,.:!?()]/g, ' ').replace(/\s+/g, ' ').trim();
     this.sq.push({ t, start, end }); if (!this.talking) this.next();
   },
-  // ตัดข้อความเป็นท่อนสั้น (ไม่เกิน ~80 ตัวอักษร) ตัดตามคำ เพื่อไม่ให้ Chrome หยุดอ่านกลางคัน
+  // ตัดข้อความเป็นท่อนสั้น (ไม่เกิน ~80 ตัวอักษร) ตัดตามคำ เพื่อไม่ให้เบราว์เซอร์หยุดอ่านกลางคัน
   chunk(t) {
     const out = []; let cur = '';
     const words = (typeof Intl !== 'undefined' && Intl.Segmenter) ? [...new Intl.Segmenter('th', { granularity: 'word' }).segment(t)].map((s) => s.segment) : t.split(/(?<= )/);
@@ -70,7 +83,7 @@ const FX = {
     // กันค้าง: ถ้าพูดนานเกินไปให้ตัดแล้วไปข้อความถัดไป
     const tm = setTimeout(() => {
       if (done) return;
-      console.warn('[TTS] พูดนานเกินกำหนด ข้ามไปข้อความถัดไป');
+      this.dbg = 'TTS: หมดเวลา ข้ามข้อความ';
       try { speechSynthesis.cancel(); } catch (e) {}
       try { this.aud && this.aud.pause(); } catch (e) {}
       fin();
@@ -90,30 +103,33 @@ const FX = {
     let called = false; const go = () => { if (called) return; called = true; cb(); };
     const web = () => this.web(t, go, alive);
     const ss = window.speechSynthesis;
-    if (!ss || typeof SpeechSynthesisUtterance === 'undefined') return web();
+    if (!ss || typeof SpeechSynthesisUtterance === 'undefined') { this.dbg = 'TTS: เครื่องไม่รองรับ -> ออนไลน์'; return web(); }
     const vs = ss.getVoices(), v = vs.find((x) => x.lang.replace('_', '-').toLowerCase().startsWith('th'));
-    if (vs.length && !v) { console.warn('[TTS] ไม่พบเสียงภาษาไทยในเครื่อง ใช้เสียงออนไลน์แทน'); return web(); }
+    if (vs.length && !v) { this.dbg = 'TTS: ไม่มีเสียงไทยในเครื่อง -> ออนไลน์'; return web(); }
     try {
       const u = new SpeechSynthesisUtterance(t); u.lang = 'th-TH'; u.rate = 1.05; if (v) u.voice = v;
+      u.onstart = () => { this.dbg = 'TTS: กำลังพูด (เสียงในเครื่อง)'; };
       u.onend = go;
       u.onerror = (e) => {
         if (!alive() || e.error === 'canceled' || e.error === 'interrupted') return go();
-        console.warn('[TTS] เสียงในเครื่องใช้ไม่ได้:', e.error, '-> ใช้เสียงออนไลน์แทน');
+        this.dbg = 'TTS: เสียงในเครื่องผิดพลาด (' + e.error + ') -> ออนไลน์';
         if (!called) web();
       };
-      this.u = u; // เก็บอ้างอิงไว้ กัน Chrome เก็บกวาดทิ้งจน onend ไม่ทำงาน
+      this.u = u; // เก็บอ้างอิงไว้ กันเบราว์เซอร์เก็บกวาดทิ้งจน onend ไม่ทำงาน
       ss.resume(); ss.speak(u);
     } catch (e) { web(); }
   },
-  // เสียงไทยออนไลน์ (Google Translate TTS แบบไม่เป็นทางการ ต้องมีอินเทอร์เน็ต)
+  // เสียงไทยออนไลน์ (Google Translate TTS แบบไม่เป็นทางการ ต้องมีอินเทอร์เน็ต) ใช้ตัวเล่นเสียงตัวเดิมที่ปลดล็อกไว้แล้ว
   web(t, go, alive) {
     if (!alive()) return go();
     try {
-      const a = new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=th&q=' + encodeURIComponent(t));
-      this.aud = a;
-      a.onended = go;
-      a.onerror = () => { console.warn('[TTS] โหลดเสียงออนไลน์ไม่ได้'); go(); };
-      const p = a.play(); if (p && p.catch) p.catch((e) => { console.warn('[TTS] เล่นเสียงออนไลน์ไม่ได้:', e.name); go(); });
+      if (!this.aud) this.aud = new Audio();
+      const a = this.aud;
+      a.onended = () => { this.dbg = 'TTS: เล่นเสียงออนไลน์จบ'; go(); };
+      a.onerror = () => { this.dbg = 'TTS: โหลดเสียงออนไลน์ไม่ได้'; go(); };
+      a.src = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=th&q=' + encodeURIComponent(t);
+      this.dbg = 'TTS: กำลังพูด (เสียงออนไลน์)';
+      const p = a.play(); if (p && p.catch) p.catch((e) => { this.dbg = 'TTS: เล่นเสียงออนไลน์ไม่ได้ (' + e.name + ')'; go(); });
     } catch (e) { go(); }
   },
 
@@ -127,5 +143,11 @@ const FX = {
       g.globalAlpha = Math.max(0, p.l); g.fillStyle = p.c; g.fillRect(p.x, p.y, p.s, p.s);
     });
     g.globalAlpha = 1;
+    // โหมดแก้ปัญหา: เปิดเกมด้วย ?debug เพื่อดูสถานะเสียงพูดบนจอ
+    if (location.search.includes('debug')) {
+      g.font = '16px sans-serif'; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = '#000'; g.fillStyle = '#7CFC00';
+      const s = this.dbg + ' | คิวพูด ' + this.sq.length + (this.talking ? ' | talking' : '');
+      g.strokeText(s, 14, 1215); g.fillText(s, 14, 1215);
+    }
   }
 };
