@@ -1,11 +1,20 @@
 const FX = {
-  ctx: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null, unlocked: 0, dbg: 'TTS: ยังไม่ได้เริ่ม',
+  ctx: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null, unlocked: 0, dbg: 'TTS: ยังไม่ได้เริ่ม', keep: 0,
   SPEED: 1.4, // ความเร็วอ่านออกเสียง: 1.0 = ปกติ, 1.4 = เร็วขึ้น, 1.7 = เร็วมาก (ถ้าเร็วไปจนฟังไม่ทัน ลดลง)
   init() {
-    if (!this.ctx) { const A = window.AudioContext || window.webkitAudioContext; this.ctx = new A(); }
-    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (!this.ctx) {
+      const A = window.AudioContext || window.webkitAudioContext; this.ctx = new A();
+      this.ctx.onstatechange = () => { if (this.ctx.state !== 'running') this.wake(); };
+    }
+    this.wake();
+    // มือถือจะปิดระบบเสียงเอฟเฟกต์ทุกครั้งที่เสียงพูดเล่น: คอยปลุกกลับเรื่อยๆ
+    if (!this.keep) this.keep = setInterval(() => this.wake(), 1500);
     try { if (window.speechSynthesis) { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices(); } } catch (e) {}
     this.unlock();
+  },
+  // ปลุกระบบเสียงเอฟเฟกต์ถ้าถูกปิด/หยุดชั่วคราว (suspended / interrupted)
+  wake() {
+    try { if (this.ctx && this.ctx.state !== 'running') { const p = this.ctx.resume(); if (p && p.catch) p.catch(() => {}); } } catch (e) {}
   },
   // มือถือต้องปลดล็อกเสียงพูดในจังหวะที่ผู้ใช้แตะจอ (เรียกจาก init ตอนแตะเริ่ม)
   unlock() {
@@ -21,6 +30,7 @@ const FX = {
   },
   tone(f, d, type, v, when, slide) {
     if (!this.ctx) return;
+    this.wake();
     const t = this.ctx.currentTime + (when || 0), o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
     if (slide) o.frequency.linearRampToValueAtTime(Math.max(30, f + slide), t + d);
@@ -34,13 +44,13 @@ const FX = {
   pluck(f) { this.tone(f, 0.5, 'triangle', 0.06); this.tone(f * 2, 0.25, 'sine', 0.02); },
   drum() { this.tone(130, 0.3, 'sine', 0.2, 0, -90); },
   cym() {
-    if (!this.ctx) return; const c = this.ctx, n = c.sampleRate * 0.4, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+    if (!this.ctx) return; this.wake(); const c = this.ctx, n = c.sampleRate * 0.4, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
     for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
     const s = c.createBufferSource(), fl = c.createBiquadFilter(), g = c.createGain(); s.buffer = b; fl.type = 'highpass'; fl.frequency.value = 5000; g.gain.value = 0.07;
     s.connect(fl); fl.connect(g); g.connect(c.destination); s.start();
   },
   erhu(f, d, v) { // เสียงซอ: เลื่อยฟันปลา + กรอง + สั่นเสียง
-    if (!this.ctx) return; const c = this.ctx, t = c.currentTime, o = c.createOscillator(), l = c.createOscillator(), lg = c.createGain(), fl = c.createBiquadFilter(), g = c.createGain();
+    if (!this.ctx) return; this.wake(); const c = this.ctx, t = c.currentTime, o = c.createOscillator(), l = c.createOscillator(), lg = c.createGain(), fl = c.createBiquadFilter(), g = c.createGain();
     o.type = 'sawtooth'; o.frequency.value = f; l.frequency.value = 5.5; lg.gain.value = f * 0.012; l.connect(lg); lg.connect(o.frequency); fl.type = 'lowpass'; fl.frequency.value = 1600;
     g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(v, t + 0.12); g.gain.exponentialRampToValueAtTime(0.001, t + d);
     o.connect(fl); fl.connect(g); g.connect(c.destination); o.start(t); l.start(t); o.stop(t + d); l.stop(t + d);
@@ -80,7 +90,7 @@ const FX = {
   next() {
     const j = this.sq.shift(); if (!j) { this.talking = false; return; }
     this.talking = true; let done = false;
-    const fin = () => { if (done) return; done = true; clearTimeout(tm); j.end && j.end(); this.next(); };
+    const fin = () => { if (done) return; done = true; clearTimeout(tm); this.wake(); j.end && j.end(); this.next(); };
     // กันค้าง: ถ้าพูดนานเกินไปให้ตัดแล้วไปข้อความถัดไป
     const tm = setTimeout(() => {
       if (done) return;
@@ -95,7 +105,7 @@ const FX = {
     const run = (i) => {
       if (done) return;
       if (i >= parts.length) return fin();
-      this.speak(parts[i], () => run(i + 1), alive);
+      this.speak(parts[i], () => { this.wake(); run(i + 1); }, alive);
     };
     run(0);
   },
@@ -145,10 +155,10 @@ const FX = {
       g.globalAlpha = Math.max(0, p.l); g.fillStyle = p.c; g.fillRect(p.x, p.y, p.s, p.s);
     });
     g.globalAlpha = 1;
-    // โหมดแก้ปัญหา: เปิดเกมด้วย ?debug เพื่อดูสถานะเสียงพูดบนจอ
+    // โหมดแก้ปัญหา: เปิดเกมด้วย ?debug เพื่อดูสถานะเสียงบนจอ
     if (location.search.includes('debug')) {
       g.font = '16px sans-serif'; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = '#000'; g.fillStyle = '#7CFC00';
-      const s = this.dbg + ' | คิวพูด ' + this.sq.length + (this.talking ? ' | talking' : '');
+      const s = this.dbg + ' | เอฟเฟกต์: ' + (this.ctx ? this.ctx.state : '-') + ' | คิวพูด ' + this.sq.length + (this.talking ? ' | talking' : '');
       g.strokeText(s, 14, 1215); g.fillText(s, 14, 1215);
     }
   }
