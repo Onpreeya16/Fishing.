@@ -58,7 +58,7 @@ const FX = {
     j.start && j.start();
     try {
       if (!j.t) return fin();
-      const u = new SpeechSynthesisUtterance(j.t); u.lang = 'th-TH'; u.rate = 0.95;
+      const u = new SpeechSynthesisUtterance(j.t); u.lang = 'th-TH'; u.rate = 1.1;
       const v = speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-').startsWith('th')); if (v) u.voice = v;
       u.onend = fin; u.onerror = fin; speechSynthesis.speak(u);
     } catch (e) { fin(); }
