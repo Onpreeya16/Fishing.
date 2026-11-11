@@ -1,44 +1,17 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>ร้านปลาย่าง</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ศาลเจ้ามงคล</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&family=Noto+Serif+TC:wght@700&display=swap" rel="stylesheet">
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#1b6fb5;font-family:system-ui,"Noto Sans Thai",sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none}
-  canvas{display:block;width:100vw;height:100vh}
-  #banner{position:fixed;top:6px;left:0;right:0;text-align:center;pointer-events:none}
-  #banner .pill{display:inline-block;background:#fff;border-radius:16px;padding:4px 16px;font-weight:800;font-size:15px;color:#333;box-shadow:0 2px 6px #0004}
-  #banner b{color:#e91e63}
-  #status{font-size:11px;color:#fff;text-shadow:0 1px 2px #000a;margin-top:2px}
-  .board{position:fixed;top:60px;width:150px;pointer-events:none;font-size:11px}
-  .board.left{left:6px} .board.right{right:6px}
-  .board h4{margin:0 0 3px;font-size:11px;color:#fff;text-shadow:0 1px 2px #000b}
-  .board .r{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.92);border-radius:14px;padding:2px 8px 2px 3px;margin-bottom:3px;color:#444;font-weight:700}
-  .board .r .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .board .r .v{color:#d81b60}
-  .av{width:18px;height:18px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:#ddd}
-  #toast{position:fixed;left:10px;right:10px;top:24%;display:none;background:#0d1b3ad9;backdrop-filter:blur(6px);color:#fff;border:1px solid #ffffff44;border-radius:18px;padding:12px 16px;text-align:center;pointer-events:none}
-  #tAv{display:none;width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #fff;margin:0 auto 6px;background:#ddd}
-  #tName{font-size:19px;font-weight:700;color:#ffd666}
-  #tWho{font-size:13px;opacity:.85;margin-top:2px}
-  #tText{font-size:16px;line-height:1.5;margin-top:6px}
-  #tLucky{font-size:13px;opacity:.85;margin-top:6px}
-  #panels{position:fixed;right:0;bottom:8px;width:160px}
-  .panel{border-radius:6px 0 0 6px;margin-bottom:6px;padding:3px 6px}
-  .panel.buy{background:#fff;color:#222}
-  .panel.help{background:#f3ecff;color:#6d28d9}
-  .gr{display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:11px;font-weight:800;cursor:pointer}
-  .gr .ic{width:20px;text-align:center;font-size:15px}
+  html, body { margin: 0; background: #000; height: 100%; overflow: hidden; }
+  canvas { display: block; margin: 0 auto; height: 100vh; width: auto; }
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
-<div id="banner"><div class="pill">ขายแล้ว <b id="sold">0</b> ชิ้น</div><div id="status">⚪ ออฟไลน์</div></div>
-<div class="board left"><h4>🪙 อันดับผู้ส่งเหรียญ</h4><div id="bCoins"></div></div>
-<div class="board right"><h4>♥ อันดับแฟนๆ</h4><div id="bLikes"></div></div>
-<div id="toast"><img id="tAv" alt=""><div id="tName"></div><div id="tWho"></div><div id="tText"></div><div id="tLucky"></div></div>
-<div id="panels"><div class="panel buy" id="pBuy"></div><div class="panel help" id="pHelp"></div></div>
+<canvas id="c"></canvas>
 <script src="data.js"></script>
 <script src="fx.js"></script>
 <script src="game.js"></script>
