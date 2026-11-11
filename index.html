@@ -9,6 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="ศาลเจ้ามงคล">
 <meta name="theme-color" content="#000000">
 <meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>ศาลเจ้ามงคล</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&family=Noto+Serif+TC:wght@700&display=swap" rel="stylesheet">
 <style>
@@ -26,6 +29,15 @@
   // กันซูมด้วยการบีบนิ้วและกันเลื่อนหน้าจอ
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (e) { document.addEventListener(e, function (ev) { ev.preventDefault(); }); });
   document.addEventListener('touchmove', function (ev) { ev.preventDefault(); }, { passive: false });
+  // ลงทะเบียน service worker (จำเป็นให้ Chrome แสดงปุ่ม "ติดตั้งแอป")
+  if ('serviceWorker' in navigator) addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+  // ถ้าเปิดในเบราว์เซอร์ปกติ (ไม่ได้ติดตั้งแอป) ให้เข้าเต็มจอเมื่อแตะหน้าจอครั้งแรก
+  document.addEventListener('click', function () {
+    var full = matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches;
+    if (!full && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(function () {});
+    }
+  }, { once: true });
 </script>
 <script src="icons.js"></script>
 <script src="data.js"></script>
