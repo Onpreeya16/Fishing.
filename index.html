@@ -14,10 +14,12 @@
   .board{position:fixed;top:60px;width:150px;pointer-events:none;font-size:11px}
   .board.left{left:6px} .board.right{right:6px}
   .board h4{margin:0 0 3px;font-size:11px;color:#fff;text-shadow:0 1px 2px #000b}
-  .board .r{display:flex;gap:4px;background:rgba(255,255,255,.92);border-radius:14px;padding:2px 8px;margin-bottom:3px;color:#444;font-weight:700}
+  .board .r{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.92);border-radius:14px;padding:2px 8px 2px 3px;margin-bottom:3px;color:#444;font-weight:700}
   .board .r .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .board .r .v{color:#d81b60}
+  .av{width:18px;height:18px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:#ddd}
   #toast{position:fixed;left:10px;right:10px;top:24%;display:none;background:#0d1b3ad9;backdrop-filter:blur(6px);color:#fff;border:1px solid #ffffff44;border-radius:18px;padding:12px 16px;text-align:center;pointer-events:none}
+  #tAv{display:none;width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #fff;margin:0 auto 6px;background:#ddd}
   #tName{font-size:19px;font-weight:700;color:#ffd666}
   #tWho{font-size:13px;opacity:.85;margin-top:2px}
   #tText{font-size:16px;line-height:1.5;margin-top:6px}
@@ -35,7 +37,7 @@
 <div id="banner"><div class="pill">ขายแล้ว <b id="sold">0</b> ชิ้น</div><div id="status">⚪ ออฟไลน์</div></div>
 <div class="board left"><h4>🪙 อันดับผู้ส่งเหรียญ</h4><div id="bCoins"></div></div>
 <div class="board right"><h4>♥ อันดับแฟนๆ</h4><div id="bLikes"></div></div>
-<div id="toast"><div id="tName"></div><div id="tWho"></div><div id="tText"></div><div id="tLucky"></div></div>
+<div id="toast"><img id="tAv" alt=""><div id="tName"></div><div id="tWho"></div><div id="tText"></div><div id="tLucky"></div></div>
 <div id="panels"><div class="panel buy" id="pBuy"></div><div class="panel help" id="pHelp"></div></div>
 <script src="data.js"></script>
 <script src="fx.js"></script>
