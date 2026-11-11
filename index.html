@@ -2,16 +2,22 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ศาลเจ้ามงคล</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&family=Noto+Serif+TC:wght@700&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; background: #000; height: 100%; overflow: hidden; }
-  canvas { display: block; margin: 0 auto; height: 100vh; width: auto; }
+  html, body { margin: 0; background: #000; width: 100%; height: 100%; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<script>
+  // ย่อ/ขยายเกมให้พอดีหน้าจอ เห็นครบทุกส่วน
+  function fit() { var s = Math.min(innerWidth / 720, innerHeight / 1280), c = document.getElementById('c'); c.style.width = 720 * s + 'px'; c.style.height = 1280 * s + 'px'; }
+  addEventListener('resize', fit); fit();
+</script>
 <script src="icons.js"></script>
 <script src="data.js"></script>
 <script src="fx.js"></script>
