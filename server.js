@@ -1,78 +1,37 @@
-const express = require('express');
-const http = require('http');
+const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
-const { WebcastPushConnection } = require('tiktok-live-connector');
+const L = require('tiktok-live-connector');
+const Conn = L.WebcastPushConnection || L.TikTokLiveConnection;
 
-const app = express();
+const USER = (process.argv[2] || process.env.TIKTOK_USER || '').replace('@', '');
+const PORT = process.env.PORT || 3000;
+const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js' };
 
-// ตัวกลางโหลดรูปโปรไฟล์ TikTok (กันปัญหาบล็อกรูปข้ามเว็บ) อนุญาตเฉพาะโดเมนรูปของ TikTok
-const AVATAR_HOSTS = [
-  'tiktokcdn.com', 'tiktokcdn-us.com', 'tiktokcdn-eu.com',
-  'ibyteimg.com', 'byteimg.com', 'tiktokv.com', 'tiktokv.us', 'muscdn.com', 'tiktok.com'
-];
-app.get('/avatar', async (req, res) => {
-  try {
-    const u = new URL(String(req.query.u || ''));
-    const h = u.hostname.toLowerCase();
-    if (u.protocol !== 'https:' || !AVATAR_HOSTS.some((s) => h === s || h.endsWith('.' + s))) {
-      return res.sendStatus(400);
-    }
-    const r = await fetch(u, { headers: { 'user-agent': 'Mozilla/5.0' }, redirect: 'error' });
-    if (!r.ok) return res.sendStatus(404);
-    const type = r.headers.get('content-type') || '';
-    if (!type.startsWith('image/')) return res.sendStatus(415);
-    res.set('content-type', type);
-    res.set('cache-control', 'public, max-age=86400');
-    res.send(Buffer.from(await r.arrayBuffer()));
-  } catch (e) {
-    res.sendStatus(404);
-  }
+const server = http.createServer((req, res) => {
+  const f = FILES[req.url.split('?')[0]];
+  if (!f) { res.writeHead(404); return res.end('404'); }
+  fs.readFile(path.join(__dirname, f), (e, d) => {
+    if (e) { res.writeHead(500); return res.end('error'); }
+    res.writeHead(200, { 'Content-Type': f.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8' });
+    res.end(d);
+  });
 });
 
-app.use(express.static(__dirname));
-const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+const send = (o) => { const s = JSON.stringify(o); wss.clients.forEach((c) => { if (c.readyState === 1) c.send(s); }); };
 
-const send = (o) => {
-  const s = JSON.stringify(o);
-  wss.clients.forEach((c) => c.readyState === 1 && c.send(s));
-};
-
-const user = process.env.TIKTOK_USER || process.argv[2];
-if (user) {
-  const conn = new WebcastPushConnection(user);
-  const connect = () =>
-    conn.connect()
-      .then(() => console.log('เชื่อม TikTok แล้ว:', user))
-      .catch((e) => { console.error(e.message || e); setTimeout(connect, 10000); });
-
-  conn.on('gift', (d) => {
-    if (d.giftType === 1 && !d.repeatEnd) return; // รอจบคอมโบก่อน
-    console.log('ของขวัญ:', d.giftName, '| เหรียญ:', d.diamondCount, '| x' + (d.repeatCount || 1), '|', d.nickname);
-    send({
-      type: 'gift',
-      name: d.giftName,
-      id: d.uniqueId || d.nickname || '',
-      user: d.nickname || d.uniqueId || 'ผู้ชม',
-      pic: d.profilePictureUrl || '',
-      count: d.repeatCount || 1,
-      diamonds: d.diamondCount || 0
-    });
+if (USER) {
+  const c = new Conn(USER);
+  c.connect().then((s) => console.log('เชื่อมต่อ TikTok แล้ว room', s.roomId)).catch((e) => console.error('เชื่อมต่อไม่ได้:', e.message || e));
+  c.on('gift', (d) => {
+    if (d.giftType === 1 && !d.repeatEnd) return;
+    console.log('GIFT:', d.giftName, 'x' + (d.repeatCount || 1), 'จาก', d.nickname);
+    send({ t: 'gift', name: d.giftName, count: d.repeatCount || 1, user: d.nickname, id: d.userId });
   });
-  conn.on('like', (d) => {
-    send({
-      type: 'like',
-      id: d.uniqueId || d.nickname || '',
-      user: d.nickname || d.uniqueId || 'ผู้ชม',
-      pic: d.profilePictureUrl || '',
-      count: d.likeCount || 1
-    });
-  });
-  conn.on('disconnected', () => setTimeout(connect, 5000));
-  connect();
+  c.on('chat', (d) => send({ t: 'chat', user: d.nickname, id: d.userId, text: d.comment }));
+  c.on('share', (d) => send({ t: 'share', user: d.nickname, id: d.userId }));
 } else {
-  console.log('ไม่ได้ใส่ชื่อ TikTok: เล่นแบบทดสอบได้ (แตะป้ายของขวัญในเกม)');
+  console.log('ไม่ได้ใส่ชื่อ TikTok -> โหมดทดสอบ เปิด http://localhost:' + PORT + '/?test');
 }
 
-const port = process.env.PORT || 3000;
-server.listen(port, () => console.log('เปิดที่ http://localhost:' + port));
+server.listen(PORT, () => console.log('เปิดที่ http://localhost:' + PORT));
