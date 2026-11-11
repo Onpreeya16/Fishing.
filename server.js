@@ -32,6 +32,8 @@ if (USER) {
   });
   c.on('chat', (d) => send({ t: 'chat', user: d.nickname, id: d.userId, text: d.comment }));
   c.on('share', (d) => send({ t: 'share', user: d.nickname, id: d.userId, ...who(d) }));
+  // กดหัวใจ: likeCount = จำนวนครั้งที่กดในชุดนั้น (คนเดียวกดได้หลายครั้ง)
+  c.on('like', (d) => send({ t: 'like', count: d.likeCount || 1, user: d.nickname, id: d.userId, ...who(d) }));
 } else {
   console.log('ไม่ได้ใส่ชื่อ TikTok -> โหมดทดสอบ เปิด http://localhost:' + PORT + '/?test');
 }
