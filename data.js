@@ -1,18 +1,30 @@
-const GIFTS = [
-  { id: 'rose',     th: 'เบ็ดกุหลาบ',     lv: 1, match: ['rose'] },
-  { id: 'goldfish', th: 'หัวใจปลาทอง',   lv: 2, match: ['heart me', 'goldfish'] },
-  { id: 'gg',       th: 'GG ปลาใหญ่',     lv: 3, match: ['gg'] },
-  { id: 'glow',     th: 'เหยื่อเรืองแสง', lv: 4, match: ['glow'] },
-  { id: 'finger',   th: 'ฟิงเกอร์ฮาร์ท',  lv: 5, match: ['finger heart'] },
-  { id: 'dragon',   th: 'กอดมังกร',       lv: 6, match: ['dragon'] }
+const CUP = 10; // 1 ถ้วย = กี่ชิ้น (แก้ได้)
+
+// type: 'buy' = ลูกค้ามาซื้อ, 'help' = ผู้ช่วยมาย่างเติมถาด
+// min/max = สุ่มจำนวนชิ้น, cups = จำนวนถ้วย, tier = ความหายากของปลา (1-6)
+// match = ชื่อของขวัญใน TikTok (ตัวพิมพ์เล็กใหญ่ไม่สำคัญ)
+const GIFT_TABLE = [
+  { id: 'rose',   icon: '🌹', type: 'buy',  min: 1,  max: 1,  text: 'สุ่มซื้อ 1 ชิ้น',      tier: 1, coins: 1,  match: ['rose'] },
+  { id: 'finger', icon: '🫰', type: 'buy',  min: 5,  max: 15, text: 'สุ่มซื้อ 5-15 ชิ้น',  tier: 2, coins: 5,  match: ['finger heart'] },
+  { id: 'box',    icon: '🎁', type: 'buy',  cups: 1,          text: 'ซื้อ 1 ถ้วย',         tier: 3, coins: 10, match: ['__ใส่ชื่อของขวัญกล่องสีชมพู__'] },
+  { id: 'donut',  icon: '🍩', type: 'buy',  cups: 3,          text: 'สั่ง 3 ถ้วย',         tier: 4, coins: 30, match: ['donut'] },
+  { id: 'gg',     icon: '🏅', type: 'help', min: 5,  max: 5,  text: 'ช่วย 5 ชิ้น',         tier: 3, coins: 1,  match: ['gg'] },
+  { id: 'donut2', icon: '🍩', type: 'help', min: 20, max: 20, text: 'ช่วย 20 ชิ้น',        tier: 4, coins: 30, match: ['__ใส่ชื่อของขวัญโดนัทช่วย__'] },
+  { id: 'pet',    icon: '🐕', type: 'help', min: 10, max: 25, text: 'สุ่มช่วย 10-25 ชิ้น', tier: 5, coins: 99, match: ['__ใส่ชื่อของขวัญตัวส้ม__'] }
 ];
 
-function matchGift(name = '', diamonds = 0) {
+// ไลก์สะสม: ครบทุกๆ every ไลก์ ได้ n ชิ้น
+const LIKE_RULES = [
+  { every: 100, type: 'buy',  n: 5, icon: '❤️', text: 'ครบ 100 ซื้อ 5 ชิ้น' },
+  { every: 300, type: 'help', n: 5, icon: '❤️', text: 'ครบ 300 ช่วย 5 ชิ้น' }
+];
+
+function matchGift(name = '') {
   const n = String(name).toLowerCase();
-  const hit = GIFTS.find((g) => g.match.some((m) => n.includes(m)));
-  if (hit) return hit;
-  const i = diamonds >= 1000 ? 5 : diamonds >= 300 ? 4 : diamonds >= 100 ? 3 : diamonds >= 30 ? 2 : diamonds >= 5 ? 1 : 0;
-  return GIFTS[i];
+  return GIFT_TABLE.find((g) => g.match.some((m) => {
+    m = String(m).toLowerCase();
+    return n === m || (m.length > 3 && n.includes(m));
+  })) || null;
 }
 
 const FISH = [
@@ -24,7 +36,7 @@ const FISH = [
   { key: 'dragon', th: 'มังกรน้ำ',    rar: 6, colors: ['#ff3d6e', '#ffe0ea'] }
 ];
 
-// ของขวัญเลเวลสูง = ได้ปลาหายากกว่า
+// tier สูง = ได้ปลาหายากกว่า
 function pickFish(lv = 1) {
   const w = FISH.map((f) => Math.max(0, 6 - 2 * Math.abs(f.rar - lv)) + 0.2);
   let r = Math.random() * w.reduce((a, b) => a + b, 0);
