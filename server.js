@@ -5,7 +5,7 @@ const Conn = L.WebcastPushConnection || L.TikTokLiveConnection;
 
 const USER = (process.argv[2] || process.env.TIKTOK_USER || '').replace('@', '');
 const PORT = process.env.PORT || 3000;
-const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js', '/bg.jpg': 'bg.jpg' };
+const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js', '/bg.jpg': 'bg.jpg', '/scene.js': 'scene.js' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg' };
 
 const server = http.createServer((req, res) => {
