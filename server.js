@@ -5,7 +5,7 @@ const Conn = L.WebcastPushConnection || L.TikTokLiveConnection;
 
 const USER = (process.argv[2] || process.env.TIKTOK_USER || '').replace('@', '');
 const PORT = process.env.PORT || 3000;
-const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js', '/bg.jpg': 'bg.jpg', '/scene.js': 'scene.js' };
+const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js', '/bg.jpg': 'bg.jpg', '/scene.js': 'scene.js', '/icons.js': 'icons.js' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg' };
 
 const server = http.createServer((req, res) => {
@@ -18,6 +18,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
+const who = (d) => ({ handle: d.uniqueId || (d.user && d.user.uniqueId) || '', pic: d.profilePictureUrl || (d.user && d.user.profilePicture && [].concat(d.user.profilePicture.urls || d.user.profilePicture.url || [])[0]) || '' });
 const wss = new WebSocketServer({ server });
 const send = (o) => { const s = JSON.stringify(o); wss.clients.forEach((c) => { if (c.readyState === 1) c.send(s); }); };
 
@@ -27,10 +28,10 @@ if (USER) {
   c.on('gift', (d) => {
     if (d.giftType === 1 && !d.repeatEnd) return;
     console.log('GIFT:', d.giftName, 'x' + (d.repeatCount || 1), 'จาก', d.nickname);
-    send({ t: 'gift', name: d.giftName, count: d.repeatCount || 1, user: d.nickname, id: d.userId });
+    send({ t: 'gift', name: d.giftName, count: d.repeatCount || 1, user: d.nickname, id: d.userId, ...who(d) });
   });
   c.on('chat', (d) => send({ t: 'chat', user: d.nickname, id: d.userId, text: d.comment }));
-  c.on('share', (d) => send({ t: 'share', user: d.nickname, id: d.userId }));
+  c.on('share', (d) => send({ t: 'share', user: d.nickname, id: d.userId, ...who(d) }));
 } else {
   console.log('ไม่ได้ใส่ชื่อ TikTok -> โหมดทดสอบ เปิด http://localhost:' + PORT + '/?test');
 }
