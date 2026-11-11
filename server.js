@@ -19,8 +19,8 @@ process.on('uncaughtException', (e) => console.error('uncaughtException:', (e &&
 process.on('unhandledRejection', (e) => console.error('unhandledRejection:', (e && e.stack) || e));
 
 // ---------- เว็บเซิร์ฟเวอร์ ----------
-const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js', '/bg.jpg': 'bg.jpg', '/scene.js': 'scene.js', '/icons.js': 'icons.js' };
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg' };
+const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js', '/bg.jpg': 'bg.jpg', '/scene.js': 'scene.js', '/icons.js': 'icons.js', '/manifest.json': 'manifest.json', '/sw.js': 'sw.js', '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.json': 'application/manifest+json; charset=utf-8' };
 const startedAt = Date.now();
 let state = USER ? 'connecting' : 'test', conn = null, attempts = 0, timer = null, stopping = false;
 let lastErr = '', lastEvent = Date.now(), lastGift = 0, connectedAt = 0;
