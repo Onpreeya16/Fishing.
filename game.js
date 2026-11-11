@@ -274,11 +274,12 @@ function drawPeople(t) {
     person(w.cx, w.cy, w.col, t, w.arrivedAt ? !!w.mv : true, 1.2);
     plate(w, w.cx, w.cy + 34);
     if (!w.leave && (!w.arrivedAt || t - w.arrivedAt < 3500)) {
+      // ป้ายเหนือหัว: รูปโปรไฟล์ + @ชื่อแอคเคานต์ของคนส่งของขวัญ (ไม่แสดงปลายทางแล้ว)
       const bx = Math.max(4, Math.min(W - 172, w.cx - 84)), by = w.cy - 80;
       rr(bx, by, 168, 50, 12); g.fillStyle = 'rgba(255,255,255,.95)'; g.fill();
       avatar(w.pic, bx + 28, by + 25, 19, w.n);
-      tx(ST[w.st].th, bx + 102, by + 21, 14, '#5c0f0f', 'center');
-      tx(trunc(w.n, 10), bx + 102, by + 40, 13, '#9b1c1c', 'center');
+      fit(w.handle ? '@' + trunc(w.handle, 16) : trunc(w.n, 12), bx + 54, by + 22, 108, 15, '#5c0f0f', true);
+      if (w.handle) fit(trunc(w.n, 12), bx + 54, by + 40, 108, 13, '#9b1c1c');
     }
     g.globalAlpha = 1;
   });
