@@ -87,11 +87,18 @@ setInterval(() => {
 const setState = (s) => { if (state !== s) { state = s; send({ t: 'status', tiktok: s }); } };
 
 // ---------- ตัวช่วยอ่านข้อมูลจาก TikTok (รองรับไลบรารีหลายเวอร์ชัน) ----------
-const who = (d) => ({
-  handle: d.uniqueId || (d.user && d.user.uniqueId) || '',
-  pic: d.profilePictureUrl || (d.user && d.user.profilePictureUrl) ||
-    (d.user && d.user.profilePicture && [].concat(d.user.profilePicture.urls || d.user.profilePicture.url || [])[0]) || ''
-});
+// เลือกลิงก์รูปโปรไฟล์ที่เบราว์เซอร์แสดงได้ (TikTok ส่งมาหลายลิงก์ บางลิงก์เป็น .heic ที่เบราว์เซอร์แสดงไม่ได้)
+const ext = (u) => String(u).split('?')[0].toLowerCase();
+const bestPic = (list) => {
+  const a = list.filter((u) => typeof u === 'string' && u);
+  const ok = a.filter((u) => !/\.heic$/.test(ext(u)));
+  return ok.find((u) => /\.jpe?g$/.test(ext(u))) || ok.find((u) => /\.(webp|png)$/.test(ext(u))) || ok[0] || '';
+};
+const who = (d) => {
+  const u = d.user || {}, pp = u.profilePicture || d.profilePicture || {};
+  const list = [].concat(pp.urls || [], pp.url || [], u.profilePictureUrl || [], d.profilePictureUrl || []);
+  return { handle: d.uniqueId || u.uniqueId || '', pic: bestPic(list) };
+};
 const nick = (d) => d.nickname || (d.user && d.user.nickname) || d.uniqueId || (d.user && d.user.uniqueId) || 'ผู้ใจบุญ';
 const uid = (d) => String(d.userId || (d.user && (d.user.userId || d.user.id)) || d.uniqueId || (d.user && d.user.uniqueId) || nick(d));
 const giftName = (d) => d.giftName || (d.giftDetails && d.giftDetails.giftName) || (d.gift && d.gift.name) || '';
@@ -105,7 +112,7 @@ const dup = (d) => { // กันเหตุการณ์ซ้ำ (เช่
 
 // กดหัวใจ: รวมยอดรายคนแล้วส่งทุก 0.5 วินาที กันเกมกระตุกเวลามีคนกดรัว
 const likeBuf = new Map();
-setInterval(() => { for (const v of likeBuf.values()) send({ t: 'like', ...v }); likeBuf.clear(); }, 500);
+setInterval(() => { for (const v of likeBuf.values()) { log('LIKE:', v.user, '+' + v.count); send({ t: 'like', ...v }); } likeBuf.clear(); }, 500);
 
 // ---------- เชื่อมต่อ TikTok (ลองใหม่อัตโนมัติ) ----------
 function drop(c) {
@@ -132,8 +139,9 @@ function hook(c) {
     const name = giftName(d), count = d.repeatCount || 1;
     if (!name) { log('GIFT ไม่มีชื่อ ข้อมูลดิบ:', Object.keys(d).join(',')); return; }
     lastGift = Date.now();
-    log('GIFT:', name, 'x' + count, 'จาก', nick(d));
-    send({ t: 'gift', name, count, user: nick(d), id: uid(d), ...who(d) });
+    const w = who(d);
+    log('GIFT:', name, 'x' + count, 'จาก', nick(d), '| รูป:', w.pic ? w.pic.slice(0, 90) : 'ไม่มี');
+    send({ t: 'gift', name, count, user: nick(d), id: uid(d), ...w });
   });
   c.on('chat', (d) => { // ส่งเฉพาะข้อความที่มี "สาธุ" (เกมใช้แค่นั้น ลดภาระ)
     if (!live()) return; touch();
@@ -145,7 +153,7 @@ function hook(c) {
   c.on('like', (d) => { // likeCount = จำนวนครั้งที่กดในชุดนั้น
     if (!live()) return; touch();
     const k = uid(d), cur = likeBuf.get(k) || { count: 0, user: nick(d), id: k, ...who(d) };
-    cur.count += d.likeCount || 1; likeBuf.set(k, cur);
+    cur.count += d.likeCount || d.count || 1; likeBuf.set(k, cur);
   });
   c.on('roomUser', touch); c.on('member', touch);
   c.on('disconnected', () => { if (live()) retry('หลุดการเชื่อมต่อ', 5000); });
