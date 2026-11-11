@@ -5,14 +5,15 @@ const Conn = L.WebcastPushConnection || L.TikTokLiveConnection;
 
 const USER = (process.argv[2] || process.env.TIKTOK_USER || '').replace('@', '');
 const PORT = process.env.PORT || 3000;
-const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js' };
+const FILES = { '/': 'index.html', '/index.html': 'index.html', '/data.js': 'data.js', '/fx.js': 'fx.js', '/game.js': 'game.js', '/bg.jpg': 'bg.jpg' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg' };
 
 const server = http.createServer((req, res) => {
   const f = FILES[req.url.split('?')[0]];
   if (!f) { res.writeHead(404); return res.end('404'); }
   fs.readFile(path.join(__dirname, f), (e, d) => {
     if (e) { res.writeHead(500); return res.end('error'); }
-    res.writeHead(200, { 'Content-Type': f.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' });
     res.end(d);
   });
 });
