@@ -1,5 +1,6 @@
 const FX = {
   ctx: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null, unlocked: 0, dbg: 'TTS: ยังไม่ได้เริ่ม',
+  SPEED: 1.4, // ความเร็วอ่านออกเสียง: 1.0 = ปกติ, 1.4 = เร็วขึ้น, 1.7 = เร็วมาก (ถ้าเร็วไปจนฟังไม่ทัน ลดลง)
   init() {
     if (!this.ctx) { const A = window.AudioContext || window.webkitAudioContext; this.ctx = new A(); }
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -107,7 +108,7 @@ const FX = {
     const vs = ss.getVoices(), v = vs.find((x) => x.lang.replace('_', '-').toLowerCase().startsWith('th'));
     if (vs.length && !v) { this.dbg = 'TTS: ไม่มีเสียงไทยในเครื่อง -> ออนไลน์'; return web(); }
     try {
-      const u = new SpeechSynthesisUtterance(t); u.lang = 'th-TH'; u.rate = 1.05; if (v) u.voice = v;
+      const u = new SpeechSynthesisUtterance(t); u.lang = 'th-TH'; u.rate = this.SPEED; if (v) u.voice = v;
       u.onstart = () => { this.dbg = 'TTS: กำลังพูด (เสียงในเครื่อง)'; };
       u.onend = go;
       u.onerror = (e) => {
@@ -124,10 +125,11 @@ const FX = {
     if (!alive()) return go();
     try {
       if (!this.aud) this.aud = new Audio();
-      const a = this.aud;
+      const a = this.aud, sp = Math.min(this.SPEED, 2);
       a.onended = () => { this.dbg = 'TTS: เล่นเสียงออนไลน์จบ'; go(); };
       a.onerror = () => { this.dbg = 'TTS: โหลดเสียงออนไลน์ไม่ได้'; go(); };
       a.src = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=th&q=' + encodeURIComponent(t);
+      a.defaultPlaybackRate = sp; a.playbackRate = sp; // เร่งความเร็วเสียงออนไลน์
       this.dbg = 'TTS: กำลังพูด (เสียงออนไลน์)';
       const p = a.play(); if (p && p.catch) p.catch((e) => { this.dbg = 'TTS: เล่นเสียงออนไลน์ไม่ได้ (' + e.name + ')'; go(); });
     } catch (e) { go(); }
