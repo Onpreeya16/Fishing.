@@ -99,9 +99,6 @@ function sfx(st) {
 // ออกจากทางเข้าด้านล่าง เดินขึ้นพรมแดงไปหน้าอาคาร และยืนอยู่จนกว่าจอจะเต็ม
 function run(it) {
   const now = performance.now(), a = { x: 361 + (Math.random() - 0.5) * 60, y: 1200 }, n = it.user || 'ผู้ใจบุญ';
-  // จอเต็ม: ให้คนที่ยืนอยู่นานที่สุดค่อยๆ จางหายไป 1 คน
-  const stay = walkers.filter((w) => !w.leave);
-  if (stay.length >= MAXP) { const old = stay.find((w) => w.arrivedAt); if (old) old.leave = now; }
   const dest = spot(ST[it.st]);
   walkers.push({ n, pic: it.pic, handle: it.handle, id: it.id, st: it.st, p: route(a, dest), dest, t0: now, arrivedAt: 0, leave: 0, cx: a.x, cy: a.y, col: 'hsl(' + (hs(n) % 360) + ',70%,60%)' });
 }
@@ -111,8 +108,8 @@ function arrive(w, now) {
   const r = makeReading(w.st), s = ST[w.st];
   const msg = w.st === 'qian' ? LUCK[r.lv >= 0 ? r.lv : 1] : r.lines[0];
   const txt = 'ขอบคุณคุณ ' + trunc(w.n, 10) + ' ' + ACT[w.st] + '. ' + msg;
-  pq.push(Object.assign(r, { user: w.n, pic: w.pic, handle: w.handle, st: w.st, txt, t0: 0, end: 0 }));
-  if (pq.length > 25) pq.shift();
+  pq.push(Object.assign(r, { user: w.n, pic: w.pic, handle: w.handle, st: w.st, txt, w, t0: 0, end: 0 }));
+  if (pq.length > 25) { const d = pq.shift(); d.w.done = 1; }
   if (counts[w.st] !== undefined) counts[w.st]++;
   sfx(w.st); FX.burst(s.cx, s.cy, 36);
   if (++goal >= goalMax) {
@@ -128,7 +125,14 @@ function step(now) {
     if (VOICE && FX.sq.length < 2) FX.say(p.txt);
   }
   const active = pops.length > 0 || pq.length > 0;
-  if (queue.length && now - lastStep > (queue.length > 10 ? 250 : 600) && walkers.filter((w) => !w.arrivedAt).length < 6 && pq.length < 8) { lastStep = now; run(queue.shift()); }
+  if (queue.length && now - lastStep > (queue.length > 10 ? 250 : 600) && walkers.filter((w) => !w.arrivedAt).length < 6) {
+    // คนเข้ามาต่อเนื่อง ไม่ต้องรอคำทำนายจบ; จอเต็มแล้วให้คนที่ได้รับคำอวยพรแล้ว (เก่าสุด) ออกก่อน
+    // ถ้ายังไม่มีใครรับคำอวยพรครบ คนถัดไปจะรออยู่ในลิสต์คิว
+    const stay = walkers.filter((w) => !w.leave);
+    let ok = stay.length < MAXP;
+    if (!ok) { const old = stay.find((w) => w.done); if (old) { old.leave = now; ok = true; } }
+    if (ok) { lastStep = now; run(queue.shift()); }
+  }
   else if (!queue.length && !active && !FX.talking && !FX.sq.length && now - lastIdle > 45000) { lastIdle = now; VOICE && FX.say(IDLE); }
 }
 
@@ -193,16 +197,16 @@ function drawGifts() {
 
 // ป๊อปอัปคำอวยพรใต้แผงของขวัญ (ทีละใบ)
 function drawPops(t) {
-  for (let i = pops.length - 1; i >= 0; i--) if (t > pops[i].end) pops.splice(i, 1);
+  for (let i = pops.length - 1; i >= 0; i--) if (t > pops[i].end) { pops[i].w.done = 1; pops.splice(i, 1); } // อ่านคำทำนายจบแล้ว = ออกได้
   const y = 86 + Math.ceil(GIFTS.length / 4) * 44 + 14;
   pops.forEach((p) => {
     g.globalAlpha = Math.min(1, (p.end - t) / 400, (t - p.t0) / 250 + 0.01);
-    rr(14, y, 692, 124, 14); g.fillStyle = 'rgba(20,0,0,.88)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 2; g.stroke();
+    rr(14, y, 500, 144, 14); g.fillStyle = 'rgba(20,0,0,.88)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 2; g.stroke();
     avatar(p.pic, 50, y + 32, 26, p.user);
-    tx(trunc(p.user, 12) + ' · ' + p.th, 90, y + 30, 22, '#ffd54a');
-    if (p.lv >= 0) tx(LEVELS[p.lv].n, 696, y + 30, 20, LEVELS[p.lv].c, 'right');
+    fit(trunc(p.user, 12) + ' · ' + p.th, 90, y + 30, 330, 22, '#ffd54a');
+    if (p.lv >= 0) tx(LEVELS[p.lv].n, 502, y + 30, 20, LEVELS[p.lv].c, 'right');
     if (p.handle) tx('@' + trunc(p.handle, 20), 90, y + 50, 14, '#f0c0c0');
-    let ly = y + 74; p.lines.forEach((l) => { ly = wrap(l, 26, ly, 660, 22, 18, '#fff', 2); });
+    let ly = y + 74; p.lines.forEach((l) => { ly = wrap(l, 26, ly, 470, 22, 17, '#fff', 2); });
     g.globalAlpha = 1;
   });
 }
@@ -216,15 +220,58 @@ function drawSt(s, t) {
   if (counts[s.id] !== undefined) lab(s.th + ' ×' + counts[s.id], s.cx, s.cy - 78, 18, '#ffd54a');
 }
 
-// มีตัวคนเฉพาะคนที่ส่งของขวัญ/กดหัวใจครบ ยืนอยู่จนกว่าจอจะเต็ม แล้วคนเก่าสุดจะค่อยๆ จางหาย
+// ลิสต์คิวรอ (ข้างป๊อปอัปคำอวยพร): รูปโปรไฟล์ + ชื่อ + @account
+function drawQueue(t) {
+  if (!queue.length) return;
+  const x0 = 522, y0 = 86 + Math.ceil(GIFTS.length / 4) * 44 + 14, rows = Math.min(4, queue.length);
+  const h = 30 + rows * 34 + (queue.length > rows ? 22 : 0);
+  rr(x0, y0, 184, h, 14); g.fillStyle = 'rgba(20,0,0,.88)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 2; g.stroke();
+  tx('คิวรอ ' + queue.length + ' คน', x0 + 92, y0 + 21, 16, '#ffd54a', 'center');
+  queue.slice(0, rows).forEach((q, i) => {
+    const y = y0 + 30 + i * 34;
+    avatar(q.pic, x0 + 22, y + 15, 13, q.user);
+    fit(trunc(q.user || 'ผู้ใจบุญ', 12), x0 + 42, y + 14, 134, 14, '#fff', true);
+    fit(q.handle ? '@' + q.handle : ACT[q.st], x0 + 42, y + 29, 134, 11, '#f0c0c0');
+  });
+  if (queue.length > rows) tx('+ อีก ' + (queue.length - rows) + ' คน', x0 + 92, y0 + h - 7, 12, '#f0c0c0', 'center');
+}
+
+// กลีบดอกไม้ลอยเบาๆ ให้ฉากมีชีวิต
+const petals = [];
+for (let i = 0; i < 26; i++) petals.push({ x: Math.random() * W, y: Math.random() * H, vx: -0.2 + Math.random() * 0.4, vy: 0.4 + Math.random() * 0.7, s: 3 + Math.random() * 3, ph: Math.random() * 6, c: ['#ffc2d4', '#fff0f3', '#ffd54a', '#ff9fb8'][i % 4] });
+function drawAmbient(t) {
+  g.globalAlpha = 0.8;
+  petals.forEach((p) => {
+    p.y += p.vy; p.x += p.vx + Math.sin(t / 900 + p.ph) * 0.4;
+    if (p.y > H + 10) { p.y = -10; p.x = Math.random() * W; }
+    g.fillStyle = p.c; g.beginPath(); g.ellipse(p.x, p.y, p.s, p.s * 0.55, p.ph + t / 700, 0, 7); g.fill();
+  });
+  g.globalAlpha = 1;
+}
+
+// คนที่ยืนอยู่หน้าอาคารเดินวนไปมาเบาๆ ในโซนของตัวเอง
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function wander(w, t) {
+  if (!w.wp) {
+    if (!w.wwait) w.wwait = t + 500 + Math.random() * 1800;
+    if (t >= w.wwait) {
+      const s = ST[w.st], d = { x: clamp(w.cx + (Math.random() - 0.5) * 140, s.fx - 80, s.fx + 80), y: clamp(w.cy + (Math.random() - 0.5) * 60, s.fy + 5, s.fy + 70) };
+      w.wp = mkPath([{ x: w.cx, y: w.cy }, d]); w.wt0 = t; w.dest = d; w.wwait = 0;
+    }
+  }
+  if (w.wp) { const r = posAt(w.wp, (t - w.wt0) * 0.045); w.cx = r.x; w.cy = r.y; w.mv = !r.done; if (r.done) w.wp = null; } else w.mv = false;
+}
+
+// มีตัวคนเฉพาะคนที่ส่งของขวัญ/กดหัวใจครบ เดินไปมาจนกว่าจอจะเต็ม แล้วคนที่รับคำอวยพรแล้วจะค่อยๆ จางหาย
 function drawPeople(t) {
   for (let i = walkers.length - 1; i >= 0; i--) if (walkers[i].leave && t - walkers[i].leave > 1000) walkers.splice(i, 1);
   walkers.slice().sort((a, b) => a.cy - b.cy).forEach((w) => {
     if (!w.arrivedAt) { const r = posAt(w.p, (t - w.t0) * 0.17); w.cx = r.x; w.cy = r.y; if (r.done) arrive(w, t); }
+    else if (!w.leave) wander(w, t);
     let a = Math.min(1, (t - w.t0) / 400);
     if (w.leave) a *= Math.max(0, 1 - (t - w.leave) / 1000);
     g.globalAlpha = a;
-    person(w.cx, w.cy, w.col, t, !w.arrivedAt, 1.2);
+    person(w.cx, w.cy, w.col, t, w.arrivedAt ? !!w.mv : true, 1.2);
     plate(w, w.cx, w.cy + 34);
     if (!w.leave && (!w.arrivedAt || t - w.arrivedAt < 3500)) {
       const bx = Math.max(4, Math.min(W - 172, w.cx - 84)), by = w.cy - 80;
@@ -249,7 +296,7 @@ function draw(t) {
   lab('คิว ' + queue.length, W - 12, 32, 22, '#fff', 'right');
   STATIONS.forEach((s) => drawSt(s, t));
   drawPeople(t);
-  drawGifts(); drawPops(t);
+  drawAmbient(t); drawGifts(); drawPops(t); drawQueue(t);
   g.fillStyle = 'rgba(20,0,0,.6)'; rr(14, 1226, 692, 50, 14); g.fill();
   wrap('ส่งของขวัญ · กดหัวใจครบ ' + HEARTS + ' ครั้งเพื่อเสี่ยงเซียมซี · พิมพ์ "สาธุ"', 30, 1258, 660, 24, 20, '#f0c0c0', 1);
   for (let i = sadhu.length - 1; i >= 0; i--) if (t - sadhu[i].t > 3500) sadhu.splice(i, 1);
