@@ -26,7 +26,7 @@
     poly([[a - 8, b + 110], [a - 4, b], [a + 6, b], [a + 12, b + 110]], '#4a2e22');
     for (let i = 0; i < 26; i++) { const ang = R() * 6.28, d = R() * 70 * s; ell(a + Math.cos(ang) * d, b - 20 + Math.sin(ang) * d * 0.8, 16 + R() * 12, 14 + R() * 10, ['#f3b6c8', '#f8d4de', '#fff0f3', '#ee9fb8'][Math.floor(R() * 4)]); }
   }
-  function label(s, a, b, size) { x.font = 'bold ' + (size || 17) + 'px ' + SANS; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = 'rgba(0,0,0,.8)'; x.strokeText(s, a, b); x.fillStyle = '#fff'; x.fillText(s, a, b); }
+  function label(s, a, b, size) { x.font = 'bold ' + (size || 19) + 'px ' + SANS; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = 'rgba(0,0,0,.8)'; x.strokeText(s, a, b); x.fillStyle = '#fff'; x.fillText(s, a, b); }
 
   function paint() {
     let q = x.createLinearGradient(0, 0, 0, 420); q.addColorStop(0, '#f2b35e'); q.addColorStop(1, '#c9593a'); rect(0, 0, 720, 440, q);
@@ -73,8 +73,8 @@
     // ป้ายชื่ออาคาร
     label('อาคารธูปหอม', 192, 586); label('อาคารบ่อปลาคราฟ', 361, 588); label('โต๊ะถวายข้าว', 539, 586);
     label('อาคารเซียมซี', 155, 820); label('อาคารไม้เสี่ยงทาย', 361, 800); label('อาคารปฏิทินจีน', 553, 820);
-    label('อาคารเหรียญนำโชค', 159, 1015); label('อาคารโคมไฟแห่งรัก', 361, 1008); label('อาคารตำราและม้วนคัมภีร์', 558, 1015, 15);
-    label('ศาลใหญ่ · ดวงการงาน', 361, 452);
+    label('อาคารเหรียญนำโชค', 159, 1015); label('อาคารโคมไฟแห่งรัก', 361, 1008); label('อาคารตำราและม้วนคัมภีร์', 558, 1015, 17);
+    label('ศาลใหญ่ · ดวงการงาน', 361, 386);
     bg.src = c.toDataURL('image/jpeg', 0.9);
   }
   const f = document.fonts ? document.fonts.load('16px "Noto Sans Thai"').catch(() => {}) : Promise.resolve();
