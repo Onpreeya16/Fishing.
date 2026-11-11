@@ -1,635 +1,206 @@
-(() => {
-  const $ = (id) => document.getElementById(id);
-  const cv = $('cv'), c = cv.getContext('2d');
-  let W = 0, H = 0, DPR = 1, S = 1;
-  function resize() {
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
-    W = innerWidth; H = innerHeight;
-    S = Math.max(0.6, Math.min(W / 420, H / 760));
-    cv.width = W * DPR; cv.height = H * DPR;
-    c.setTransform(DPR, 0, 0, DPR, 0, 0);
-  }
-  addEventListener('resize', resize); resize();
+const cv = document.getElementById('c'), g = cv.getContext('2d'), W = 720, H = 1280;
+cv.width = W; cv.height = H;
+const SANS = "'Noto Sans Thai',Sarabun,Tahoma,sans-serif", SERIF = "'Noto Serif TC','Songti TC',SimSun,serif";
+const TEST = location.search.includes('test'), seg = new Intl.Segmenter('th', { granularity: 'word' });
+const queue = [], users = {}, counts = { altar: 0, rice: 0, fish: 0 }, shared = {}, ST = {}, walkers = [], sadhu = [], lastSadhu = {};
+let hits = [], cur = null, curT = 0, lastStep = 0, started = false, goal = 0, goalMax = 35, goalFlash = 0;
 
-  const OUT = 'rgba(50,20,50,.6)';
-  const rr = (x, y, w, h, r) => {
-    c.beginPath(); c.moveTo(x + r, y);
-    c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
-    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
-  };
-  const mix = (a, b, k) => {
-    const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-    const A = p(a), B = p(b);
-    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join('');
-  };
-  const cooked = (f, k) => ({ ...f, rar: 1, colors: [mix(f.colors[0], '#7a3f17', k), mix(f.colors[1], '#e0a45f', k)] });
-  const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
-  const avUrl = (pic) => '/avatar?u=' + encodeURIComponent(pic);
+STATIONS.forEach((s, i) => {
+  if (i === 0) Object.assign(s, { x: 200, y: 318, w: 320, h: 172 });
+  else { const k = i - 1; Object.assign(s, { x: 8 + (k % 3) * 236, y: 505 + Math.floor(k / 3) * 192, w: 224, h: 178 }); }
+  ST[s.id] = s;
+});
 
-  function starPath(ctx, x, y, r) {
-    ctx.beginPath(); ctx.moveTo(x, y - r);
-    ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r);
-    ctx.quadraticCurveTo(x, y, x - r, y); ctx.quadraticCurveTo(x, y, x, y - r);
-    ctx.fill();
-  }
+const hs = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+const trunc = (s, n) => ([...s].length > n ? [...s].slice(0, n).join('') + '…' : s);
+const animalOf = (id, name) => (users[id] !== undefined ? users[id] : hs(id || name) % 12);
 
-  // ---------- รูปโปรไฟล์ ----------
-  const avCache = new Map();
-  function getAvatar(pic) {
-    if (!pic) return null;
-    let e = avCache.get(pic);
-    if (e) return e;
-    e = { img: new Image(), ok: false };
-    e.img.onload = () => { e.ok = true; };
-    e.img.onerror = () => { e.ok = false; };
-    e.img.src = avUrl(pic);
-    avCache.set(pic, e);
-    return e;
-  }
-  function drawAvatar(x, y, r, a) {
-    c.save();
-    c.beginPath(); c.arc(x, y, r, 0, 7); c.closePath();
-    if (a.av && a.av.ok) {
-      c.clip(); c.drawImage(a.av.img, x - r, y - r, r * 2, r * 2);
-    } else {
-      c.fillStyle = a.perm ? ROLES[a.role].col : `hsl(${a.hue},60%,55%)`; c.fill();
-      c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.font = `bold ${Math.round(r * 1.1)}px system-ui,sans-serif`;
-      c.fillText(a.perm ? ROLES[a.role].emoji : (Array.from(a.name)[0] || '?'), x, y + 1);
-      c.textBaseline = 'alphabetic';
+function matchGift(name) {
+  const n = String(name || '').toLowerCase();
+  return GIFTS.find((q) => q.m.some((x) => (q.x ? n === x : n.includes(x))));
+}
+function enqueue(it) { if (queue.length >= 40) return; if (it.f) queue.unshift(it); else queue.push(it); }
+function onGift(m) {
+  const q = matchGift(m.name); if (!q) return;
+  const n = Math.min(m.count || 1, 5);
+  for (let i = 0; i < n; i++) q.st.forEach((st) => enqueue({ st, user: m.user, id: m.id, f: q.f }));
+}
+function onShare(m) { if (shared[m.id]) return; shared[m.id] = 1; enqueue({ st: 'altar', user: m.user, id: m.id }); }
+function onChat(m) {
+  const raw = String(m.text || '').trim();
+  if (raw.includes('สาธุ')) {
+    const n = Date.now();
+    if (cur && n - (lastSadhu[m.id] || 0) > 10000) {
+      lastSadhu[m.id] = n; sadhu.push({ n: m.user, t: performance.now() });
+      if (sadhu.length > 4) sadhu.shift();
+      FX.tone(660, 0.5, 'sine', 0.08);
     }
-    c.restore();
-    c.lineWidth = 2.5; c.strokeStyle = '#fff';
-    c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke();
+    return;
   }
+  const t = raw.replace(/^ปี/, '');
+  const a = ANIMALS.indexOf(t); if (a >= 0) { users[m.id] = a; return; }
+  const y = t.match(/\b(\d{4})\b/);
+  if (y) { let v = +y[1]; if (v > 2300) v -= 543; if (v >= 1940 && v <= 2020) users[m.id] = (((v - 4) % 12) + 12) % 12; }
+}
 
-  // ---------- วาดปลาสไตล์อนิเมะ ----------
-  function drawFishOn(ctx, x, y, s, f, t = 0, dir = 1, alpha = 1) {
-    const [c1, c2] = f.colors, sw = Math.sin(t * 6) * 0.2;
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(x, y); ctx.scale(dir * s, s);
-    ctx.lineJoin = 'round'; ctx.lineWidth = 2.2; ctx.strokeStyle = OUT;
-    let g;
-    if (f.rar >= 4) {
-      g = ctx.createRadialGradient(0, 0, 10, 0, 0, 100);
-      g.addColorStop(0, c1 + '88'); g.addColorStop(1, c1 + '00');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 100, 0, 7); ctx.fill();
-    }
-    ctx.save(); ctx.translate(-46, 0); ctx.rotate(sw);
-    g = ctx.createLinearGradient(-76, 0, 0, 0);
-    g.addColorStop(0, c2 + 'cc'); g.addColorStop(1, c1);
-    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(-25, -8, -50, -42, -76, -38);
-    ctx.bezierCurveTo(-60, -14, -60, 14, -76, 38);
-    ctx.bezierCurveTo(-50, 42, -25, 8, 0, 0);
-    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
-    ctx.fillStyle = c1; ctx.beginPath(); ctx.moveTo(25, -30);
-    ctx.quadraticCurveTo(0, -72 + sw * 20, -38, -14);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    g = ctx.createLinearGradient(0, -40, 0, 40);
-    g.addColorStop(0, c1); g.addColorStop(0.6, c2); g.addColorStop(1, '#ffffff');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(60, 4);
-    ctx.bezierCurveTo(54, -34, 0, -46, -50, -8); ctx.lineTo(-50, 8);
-    ctx.bezierCurveTo(0, 44, 54, 32, 60, 4);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.save(); ctx.clip();
-    ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.4;
-    for (let i = 0; i < 5; i++) for (let j = 0; j < 4; j++) {
-      ctx.beginPath();
-      ctx.arc(-28 + i * 16, -18 + j * 13 + (i % 2) * 6, 9, Math.PI * 0.5, Math.PI * 1.5);
-      ctx.stroke();
-    }
-    ctx.restore();
-    ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath();
-    ctx.ellipse(5, -22, 30, 6, -0.1, 0, 7); ctx.fill();
-    ctx.save(); ctx.translate(10, 10); ctx.rotate(0.5 + sw);
-    ctx.strokeStyle = OUT; ctx.lineWidth = 2.2; ctx.fillStyle = c2;
-    ctx.beginPath(); ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(-22, 6, -30, 26); ctx.quadraticCurveTo(-6, 22, 0, 0);
-    ctx.fill(); ctx.stroke(); ctx.restore();
-    if (f.rar >= 6) {
-      ctx.strokeStyle = c1; ctx.lineWidth = 3; ctx.lineCap = 'round';
-      for (const d of [-1, 1]) {
-        ctx.beginPath(); ctx.moveTo(58, 2);
-        ctx.bezierCurveTo(80, 2 + d * 14, 95, 2 + d * 20 + sw * 30, 112, 2 + d * 8);
-        ctx.stroke();
-      }
-    }
-    ctx.strokeStyle = OUT; ctx.lineWidth = 2;
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(38, -8, 10, 0, 7); ctx.fill(); ctx.stroke();
-    g = ctx.createRadialGradient(39, -8, 1, 39, -8, 8);
-    g.addColorStop(0, '#ffffff55'); g.addColorStop(0.4, c1); g.addColorStop(1, '#2b1b4d');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(39, -8, 7.5, 0, 7); ctx.fill();
-    ctx.fillStyle = '#1a1030'; ctx.beginPath(); ctx.arc(40, -8, 4, 0, 7); ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(36, -12, 3, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(43, -4, 1.4, 0, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(255,120,160,.45)'; ctx.beginPath();
-    ctx.ellipse(34, 8, 6, 3.5, 0, 0, 7); ctx.fill();
-    ctx.strokeStyle = OUT; ctx.lineWidth = 1.6; ctx.beginPath();
-    ctx.moveTo(55, 4); ctx.quadraticCurveTo(58, 9, 52, 10); ctx.stroke();
-    if (f.rar >= 3) {
-      ctx.fillStyle = '#fff';
-      [[-10, -48], [20, 38], [48, -36]].forEach(([px, py], i) =>
-        starPath(ctx, px, py, 3 + 3 * Math.abs(Math.sin(t * 4 + i * 2))));
-    }
-    ctx.restore();
+function sfx(st) {
+  if (st === 'altar') FX.gong();
+  else if (st === 'fish') { FX.splash(); FX.chime(); }
+  else if (st === 'buei') FX.clack();
+  else if (st === 'qian') { FX.clack(); FX.chime(); }
+  else FX.chime();
+}
+
+// เริ่มเดิน: ตัวละครออกจากบันไดด้านล่างไปที่จุดของขวัญ
+function run(it) {
+  const s = ST[it.st], now = performance.now(), sx = W / 2 + (Math.random() - 0.5) * 140, sy = 1050;
+  walkers.push({
+    n: it.user || 'ผู้ใจบุญ', id: it.id, st: it.st, sx, sy, cx: sx, cy: sy,
+    tx: s.x + 36 + Math.random() * (s.w - 72), ty: s.y + s.h - 46, t0: now, arrivedAt: 0
+  });
+  if (walkers.length > 40) walkers.shift();
+}
+// เดินถึงแล้ว: ให้ผลดวง เสียง เอฟเฟกต์ และนับเป้าหมาย
+function arrive(w, now) {
+  w.arrivedAt = now;
+  const a = animalOf(w.id, w.n), r = makeReading(w.st);
+  cur = Object.assign(r, { user: w.n, a, st: w.st }); curT = now;
+  if (counts[w.st] !== undefined) counts[w.st]++;
+  sfx(w.st);
+  const s = ST[w.st]; FX.burst(s.x + s.w / 2, s.y + s.h / 2, 36);
+  FX.speak(w.n + ' ' + r.th + ' ' + r.lines.join(' '));
+  if (++goal >= goalMax) {
+    goal = 0; goalMax = Math.min(100, goalMax + 5); goalFlash = now;
+    FX.gong(); FX.burst(W / 2, 640, 80, '#ff5a36');
   }
+}
+function step(now) {
+  if (!started || !queue.length) return;
+  if (now - lastStep > Math.max(2500, 7000 - queue.length * 350)) { lastStep = now; run(queue.shift()); }
+}
 
-  // ---------- สถานะร้าน ----------
-  const ROLES = {
-    fisher:  { emoji: '🎣', col: '#3b82f6' },
-    griller: { emoji: '🔥', col: '#ef4444' },
-    helper:  { emoji: '🤝', col: '#8b5cf6' },
-    buyer:   { emoji: '🛒', col: '#22c55e' }
-  };
-  const CAP = 1000;
-  // ช่องยืน: ผู้ช่วยใช้ช่องย่างหมายเลข 1-2 (ช่อง 0 เป็นของแม่ค้าประจำร้าน)
-  const slots = { fisher: [null], griller: [null, null, null], buyer: Array(5).fill(null) };
-  const pending = { helper: [], buyer: [] };
-  let actors = [], raw = [], ready = [], sold = 0, time = 0, uid = 0, wsOK = false, soldShown = -1;
-  const floats = [], toasts = [];
-  let toastOn = false, toastT = 0;
-
-  raw = Array.from({ length: 5 }, () => pickFish(1));
-  ready = Array.from({ length: 30 }, () => pickFish(rnd(1, 2)));
-
-  const ambient = Array.from({ length: 6 }, (_, i) => ({
-    x: Math.random() * 400, y: 0.16 + Math.random() * 0.2,
-    v: (Math.random() < 0.5 ? -1 : 1) * (15 + Math.random() * 25),
-    s: 0.35 + Math.random() * 0.25, f: FISH[i % 4], ph: Math.random() * 6
-  }));
-
-  function slotPos(role, i) {
-    if (role === 'fisher') return { x: W * 0.3, y: H * 0.415 };
-    if (role === 'griller' || role === 'helper') return { x: W * (0.25 + i * 0.25), y: H * 0.55 };
-    return { x: W * (0.08 + i * 0.11), y: H * (i % 2 ? 0.875 : 0.8) };
+const rr = (x, y, w, h, r) => { g.beginPath(); g.roundRect(x, y, w, h, r); };
+function tx(s, x, y, size, col, al, font) { g.font = size + 'px ' + (font || SANS); g.fillStyle = col; g.textAlign = al || 'left'; g.fillText(s, x, y); }
+function wrap(s, x, y, mw, lh, size, col, max) {
+  g.font = size + 'px ' + SANS; let line = '', n = 1;
+  for (const w of seg.segment(s)) {
+    const t = line + w.segment;
+    if (g.measureText(t).width > mw && line) { tx(line, x, y, size, col); y += lh; line = w.segment.trimStart(); if (++n > max) return y; }
+    else line = t;
   }
+  tx(line, x, y, size, col); return y + lh;
+}
 
-  function makeActor(role, i, o) {
-    const p = slotPos(role, i);
-    const a = {
-      id: ++uid, role, slot: i, lv: o.lv || 2,
-      name: Array.from(String(o.name || 'ผู้ชม')).slice(0, 24).join(''),
-      pic: o.pic || '', av: getAvatar(o.pic),
-      need: o.need || 0, got: 0, done: 0, perm: !!o.perm,
-      x: role === 'buyer' ? W + 50 : -50, y: p.y, tx: p.x, ty: p.y,
-      st: 'walk', t: 0, dur: 0, cool: 0, idle: 0, hue: Math.floor(Math.random() * 360),
-      born: time, fish: null, bag: [], say: '', sayT: 0, dead: false
-    };
-    actors.push(a);
-    return a;
-  }
+function panel(side, x, title) {
+  rr(x, 88, 348, 226, 12); g.fillStyle = 'rgba(40,0,0,.85)'; g.fill(); g.strokeStyle = '#e8b923'; g.lineWidth = 2; g.stroke();
+  tx(title, x + 174, 114, 18, '#ffd54a', 'center');
+  let y = 140;
+  GIFTS.filter((q) => q.s === side).forEach((q) => {
+    tx(q.e + ' ' + q.n + ' › ' + q.a, x + 12, y, 15, '#fff');
+    if (TEST) hits.push({ x, y: y - 18, w: 348, h: 26, q });
+    y += 26;
+  });
+}
 
-  function assign() {
-    while (pending.helper.length) {
-      const i = [1, 2].find((k) => !slots.griller[k]);
-      if (i === undefined) break;
-      slots.griller[i] = makeActor('helper', i, pending.helper.shift());
-    }
-    while (pending.buyer.length) {
-      const i = slots.buyer.indexOf(null);
-      if (i < 0) break;
-      slots.buyer[i] = makeActor('buyer', i, pending.buyer.shift());
+function drawSt(s, t) {
+  const on = cur && cur.st === s.id && t - curT < 7000;
+  rr(s.x, s.y, s.w, s.h, 16); g.fillStyle = on ? '#9b1c1c' : '#5c0f0f'; g.fill();
+  g.lineWidth = on ? 5 : 3; g.strokeStyle = on ? '#fff3a0' : '#e8b923'; g.stroke();
+  tx(s.zh, s.x + s.w / 2, s.y + s.h * 0.62, s.id === 'altar' ? 90 : 64, 'rgba(255,213,74,.35)', 'center', SERIF);
+  tx(s.th, s.x + s.w / 2, s.y + 24, 17, '#fff', 'center');
+  if (counts[s.id] !== undefined) tx('×' + counts[s.id], s.x + s.w - 10, s.y + s.h - 10, 16, '#ffd54a', 'right');
+  if (s.id === 'fish') {
+    const n = Math.min(8, 2 + counts.fish);
+    for (let i = 0; i < n; i++) {
+      const fx = s.x + 24 + ((t / 25 * (0.6 + i * 0.1) + i * 47) % (s.w - 48)), fy = s.y + s.h - 30 + Math.sin(t / 400 + i) * 8;
+      g.fillStyle = i % 2 ? '#ff8c1a' : '#ff5a36';
+      g.beginPath(); g.ellipse(fx, fy, 15, 7, 0, 0, 7); g.fill();
+      g.beginPath(); g.moveTo(fx - 12, fy); g.lineTo(fx - 24, fy - 7); g.lineTo(fx - 24, fy + 7); g.fill();
     }
   }
+}
 
-  const say = (a, t, d = 1.6) => { a.say = t; a.sayT = d; };
-  const float = (x, y, text, col) => floats.push({ x, y, text, col, life: 1.4 });
-  function leave(a) {
-    if (a.st === 'leave' || a.perm) return;
-    const arr = a.role === 'helper' ? slots.griller : slots[a.role];
-    arr[a.slot] = null;
-    a.st = 'leave'; a.tx = a.role === 'buyer' ? W + 60 : -60;
-  }
-
-  // ---------- ของขวัญ / ไลก์ (u = { id, name, pic }) ----------
-  const coins = new Map(), likes = new Map();
-  const likeAcc = LIKE_RULES.map(() => 0);
-
-  function bump(map, u, n) {
-    const key = u.id || u.name;
-    const e = map.get(key) || { name: u.name, pic: u.pic, v: 0 };
-    e.v += n; e.name = u.name; if (u.pic) e.pic = u.pic;
-    map.set(key, e);
-  }
-  function order(type, n, u, tier) {
-    n = Math.max(1, Math.min(n, 60));
-    (type === 'buy' ? pending.buyer : pending.helper).push({ name: u.name, pic: u.pic, need: n, lv: tier || 3 });
-  }
-  function onGift(g, u, count, coin) {
-    const k = Math.max(1, count || 1);
-    let n = g.cups ? g.cups * CUP : rnd(g.min, g.max);
-    order(g.type, n * k, u, g.tier);
-    bump(coins, u, (coin || 0) * k);
-  }
-  function onLike(u, count) {
-    bump(likes, u, count);
-    LIKE_RULES.forEach((r, i) => {
-      likeAcc[i] += count;
-      while (likeAcc[i] >= r.every) { likeAcc[i] -= r.every; order(r.type, r.n, u, 2); }
-    });
-  }
-
-  // ---------- ข้อความดวงตอนลูกค้าซื้อ ----------
-  function showToast(a, f) {
-    if (toasts.length > 6) toasts.shift();
-    toasts.push({ who: a.name, pic: a.pic, n: a.got, f, fo: nextFortune(f.key) });
-  }
-  function toastStep(dt) {
-    if (toastOn) { toastT -= dt; if (toastT <= 0) { toastOn = false; $('toast').style.display = 'none'; } }
-    if (!toastOn && toasts.length) {
-      const t = toasts.shift();
-      toastOn = true; toastT = Math.max(5, t.fo.text.length * 0.09);
-      const av = $('tAv');
-      if (t.pic) { av.src = avUrl(t.pic); av.style.display = 'block'; } else av.style.display = 'none';
-      av.onerror = () => { av.style.display = 'none'; };
-      $('tName').textContent = `${t.f.th} ${'★'.repeat(t.f.rar)}`;
-      $('tWho').textContent = `${t.who} ซื้อปลาย่าง ${t.n} ชิ้น`;
-      $('tText').textContent = t.fo.text;
-      $('tLucky').textContent = t.fo.lucky;
-      $('toast').style.display = 'block';
-      FX.win(t.f.rar); FX.speak(t.fo.text);
+function drawWalkers(t) {
+  for (let i = walkers.length - 1; i >= 0; i--) if (walkers[i].arrivedAt && t - walkers[i].arrivedAt > 20000) walkers.splice(i, 1);
+  walkers.forEach((w) => {
+    if (!w.arrivedAt) {
+      const p = Math.min(1, (t - w.t0) / 1800), e = p * p * (3 - 2 * p);
+      w.cx = w.sx + (w.tx - w.sx) * e;
+      w.cy = w.sy + (w.ty - w.sy) * e - (p < 1 ? Math.abs(Math.sin(p * Math.PI * 6)) * 7 : 0);
+      if (p >= 1) arrive(w, t);
     }
-  }
-
-  // ---------- พฤติกรรม ----------
-  const FLOAT_Y = 150;
-  function arrive(a) {
-    a.t = 0;
-    if (a.role === 'fisher') { a.st = 'cast'; FX.cast(); }
-    else if (a.role === 'helper') { a.st = 'work'; a.fish = null; a.done = 0; }
-    else { a.st = 'wait'; a.idle = 0; }
-  }
-
-  function fisherStep(a) {
-    switch (a.st) {
-      case 'cast':
-        if (a.t > 0.6) { a.st = 'wait'; a.t = 0; a.dur = 3 + Math.random() * 2; }
-        break;
-      case 'wait':
-        if (a.t > a.dur) { a.st = 'bite'; a.t = 0; a.fish = pickFish(a.lv); FX.bite(); say(a, '!', 0.6); }
-        break;
-      case 'bite':
-        if (a.t > 0.6) { a.st = 'reel'; a.t = 0; }
-        break;
-      case 'reel':
-        if (a.t > 0.8) {
-          if (raw.length < 40) { raw.push(a.fish); float(a.x, a.y - FLOAT_Y * S, '+' + a.fish.th, '#ffd666'); }
-          FX.splash(); a.fish = null; a.st = 'cast'; a.t = 0;
-        }
-        break;
+    const col = 'hsl(' + (hs(w.n) % 360) + ',70%,60%)';
+    g.fillStyle = col; g.beginPath(); g.arc(w.cx, w.cy, 9, 0, 7); g.fill(); g.fillRect(w.cx - 8, w.cy + 10, 16, 14);
+    tx(trunc(w.n, 8), w.cx, w.cy + 38, 12, '#fff', 'center');
+    if (!w.arrivedAt || t - w.arrivedAt < 3500) {
+      const bx = Math.max(4, Math.min(W - 144, w.cx - 70)), by = w.cy - 68;
+      rr(bx, by, 140, 44, 10); g.fillStyle = 'rgba(255,255,255,.95)'; g.fill();
+      tx(ST[w.st].th, bx + 70, by + 19, 15, '#5c0f0f', 'center');
+      tx(trunc(w.n, 12), bx + 70, by + 37, 13, '#9b1c1c', 'center');
     }
+  });
+}
+
+function draw(t) {
+  hits = [];
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#5a0b0b'); bg.addColorStop(1, '#220404');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 7; i++) {
+    const x = 50 + i * 103, y = 16 + Math.sin(t / 900 + i) * 4;
+    g.fillStyle = '#d62828'; g.beginPath(); g.ellipse(x, y + 12, 16, 13, 0, 0, 7); g.fill();
+    g.fillStyle = '#ffd54a'; g.fillRect(x - 6, y - 2, 12, 4);
   }
-  function grillerStep(a) {
-    switch (a.st) {
-      case 'wait':
-        if (raw.length) { a.fish = raw.shift(); a.st = 'grill'; a.t = 0; a.dur = 5; FX.sizzle(); }
-        break;
-      case 'grill':
-        if (a.t >= a.dur) {
-          if (ready.length < CAP) { ready.push(a.fish); float(a.x, a.y - FLOAT_Y * S, '+ปลาย่าง', '#ff9f43'); }
-          FX.ding(); a.fish = null; a.st = 'done'; a.t = 0;
-        }
-        break;
-      case 'done':
-        if (a.t > 0.4) { a.st = 'wait'; a.t = 0; }
-        break;
+  tx('ศาลเจ้ามงคล 福', W / 2, 64, 36, '#ffd54a', 'center');
+  tx('ดูดวงเพื่อความบันเทิง', W / 2, 82, 12, '#f0c0c0', 'center');
+  tx('🎯 ' + goal + '/' + goalMax, 12, 64, 18, '#ffd54a');
+  tx('คิว ' + queue.length, W - 12, 64, 18, '#fff', 'right');
+  panel(0, 8, 'ส่งสติกเกอร์ทำบุญ'); panel(1, 364, 'ร่วมทำบุญ');
+  STATIONS.forEach((s) => drawSt(s, t));
+  drawWalkers(t);
+  if (cur && t - curT < 7500) {
+    g.globalAlpha = Math.min(1, (7500 - (t - curT)) / 500);
+    rr(14, 1085, 692, 190, 16); g.fillStyle = 'rgba(20,0,0,.9)'; g.fill(); g.strokeStyle = '#ffd54a'; g.lineWidth = 3; g.stroke();
+    tx(cur.zh + ' ' + cur.th, 28, 1120, 24, '#ffd54a');
+    tx(trunc(cur.user, 14) + ' · ปี' + ANIMALS[cur.a] + AEMO[cur.a], 692, 1120, 18, '#fff', 'right');
+    if (cur.lv >= 0) tx('ระดับ: ' + LEVELS[cur.lv].n, 28, 1148, 18, LEVELS[cur.lv].c);
+    let y = cur.lv >= 0 ? 1176 : 1156;
+    cur.lines.forEach((l) => { y = wrap(l, 28, y, 660, 26, 20, '#fff', 2); });
+    g.globalAlpha = 1;
+  } else {
+    wrap('ส่งของขวัญเพื่อดูดวง · พิมพ์ปีเกิด (เช่น 2540) หรือปีนักษัตร (เช่น มะเส็ง) ในแชต · พิมพ์ "สาธุ" เพื่อน้อมรับคำทำนาย', 30, 1150, 660, 28, 20, '#f0c0c0', 3);
+  }
+  for (let i = sadhu.length - 1; i >= 0; i--) if (t - sadhu[i].t > 3500) sadhu.splice(i, 1);
+  sadhu.forEach((s, i) => {
+    g.globalAlpha = Math.min(1, (3500 - (t - s.t)) / 500);
+    tx('🙏 ' + trunc(s.n, 10) + ': สาธุ', 700, 1072 - i * 26, 18, '#ffd54a', 'right');
+  });
+  g.globalAlpha = 1;
+  if (goalFlash && t - goalFlash < 4000) {
+    g.globalAlpha = Math.min(1, (4000 - (t - goalFlash)) / 600);
+    tx('ครบเป้าหมายร่วมทำบุญ! 🎉', W / 2, 700, 40, '#ffd54a', 'center');
+    g.globalAlpha = 1;
+  }
+  FX.step(g);
+  if (!started) { g.fillStyle = 'rgba(0,0,0,.75)'; g.fillRect(0, 0, W, H); tx('แตะหน้าจอเพื่อเริ่ม (เปิดเสียง)', W / 2, H / 2, 34, '#ffd54a', 'center'); }
+}
+
+cv.addEventListener('click', (e) => {
+  if (!started) { FX.init(); started = true; lastStep = performance.now() - 10000; return; }
+  if (!TEST) return;
+  const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+  hits.forEach((h) => {
+    if (x > h.x && x < h.x + h.w && y > h.y && y < h.y + h.h) {
+      const id = 't' + Math.floor(Math.random() * 5), user = 'ทดสอบ' + id;
+      if (h.q.share) onShare({ id: id + Math.random(), user }); else onGift({ name: h.q.m[0], count: 1, user, id });
     }
-  }
-  function helperStep(a) {
-    if (a.st !== 'work') return;
-    if (!a.fish) {
-      if (ready.length >= CAP) { if (a.sayT <= 0) say(a, 'ถาดเต็มแล้ว!', 1.5); return; }
-      a.fish = pickFish(a.lv); a.t = 0; a.dur = a.need >= 20 ? 0.2 : 0.45;
-      if (a.done === 0) FX.sizzle();
-    } else if (a.t >= a.dur) {
-      ready.push(a.fish); a.fish = null; a.done++;
-      if (a.done >= a.need) {
-        float(a.x, a.y - FLOAT_Y * S, `+${a.need} ชิ้น`, '#c4a1ff');
-        FX.ding(); say(a, 'ช่วยเสร็จแล้ว!'); leave(a);
-      }
-    }
-  }
-  function finishBuyer(a) {
-    if (a.got > 0) {
-      const best = a.bag.reduce((m, f) => (f.rar > m.rar ? f : m), a.bag[0]);
-      showToast(a, best); say(a, 'อร่อยแน่!');
-    } else say(a, 'รอนานไป ไว้มาใหม่นะ', 2);
-    leave(a);
-  }
-  function buyerStep(a, dt) {
-    if (a.st !== 'wait') return;
-    a.idle += dt;
-    if (a.got >= a.need || a.idle > 40) finishBuyer(a);
-  }
+  });
+});
+if (TEST) document.addEventListener('keydown', (e) => { if (e.key === 's') onChat({ id: 'k' + Math.random(), user: 'ทดสอบสาธุ', text: 'สาธุ' }); });
 
-  function update(dt) {
-    time += dt;
-    assign();
-    const wb = actors.filter((a) => a.role === 'buyer' && a.st === 'wait').sort((a, b) => a.born - b.born);
-    for (const a of wb) {
-      if (a.cool <= 0 && ready.length && a.got < a.need) {
-        a.bag.push(ready.shift()); a.got++; sold++; a.idle = 0;
-        a.cool = a.need >= 20 ? 0.12 : 0.3;
-        if (a.got % 3 === 1) FX.coin();
-      }
-    }
-    for (const a of actors) {
-      a.t += dt; a.sayT -= dt; a.cool -= dt;
-      const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy), moving = d > 2;
-      if (moving) {
-        const sp = 170 * S * dt;
-        if (d <= sp) { a.x = a.tx; a.y = a.ty; } else { a.x += (dx / d) * sp; a.y += (dy / d) * sp; }
-      }
-      if (a.st === 'walk' && !moving) arrive(a);
-      else if (a.st === 'leave' && !moving) a.dead = true;
-      else if (a.role === 'fisher') fisherStep(a);
-      else if (a.role === 'griller') grillerStep(a);
-      else if (a.role === 'helper') helperStep(a);
-      else buyerStep(a, dt);
-    }
-    actors = actors.filter((a) => !a.dead);
-    ambient.forEach((a) => { a.x += a.v * dt; if (a.x > W + 80) a.x = -80; if (a.x < -80) a.x = W + 80; });
-    floats.forEach((f) => { f.y -= 30 * dt; f.life -= dt; });
-    for (let i = floats.length - 1; i >= 0; i--) if (floats[i].life <= 0) floats.splice(i, 1);
-    toastStep(dt);
-    if (sold !== soldShown) { soldShown = sold; $('sold').textContent = sold.toLocaleString('en-US'); }
-  }
-
-  // ---------- วาดตัวละคร ----------
-  function drawBubble(x, y, text) {
-    c.font = `${Math.round(13 * S)}px system-ui,sans-serif`;
-    const w = c.measureText(text).width + 14, h = 22 * S;
-    c.fillStyle = 'rgba(255,255,255,.95)'; rr(x - w / 2, y - h, w, h, 8); c.fill();
-    c.beginPath(); c.moveTo(x - 4, y); c.lineTo(x + 4, y); c.lineTo(x, y + 6); c.closePath(); c.fill();
-    c.fillStyle = '#222'; c.textAlign = 'center'; c.fillText(text, x, y - h * 0.3);
-  }
-
-  function drawPerson(a) {
-    const s = S * 0.95, walking = a.st === 'walk' || a.st === 'leave';
-    const bob = walking ? Math.abs(Math.sin(time * 10 + a.id)) * 3 : Math.sin(time * 2 + a.id);
-    const lx = walking ? Math.sin(time * 10 + a.id) * 5 : 0;
-    const col = ROLES[a.role].col, hy = -60 - bob;
-    const cook = a.role === 'griller' || a.role === 'helper';
-    c.save(); c.translate(a.x, a.y); c.scale(s, s);
-    c.fillStyle = 'rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(0, 0, 20, 6, 0, 0, 7); c.fill();
-    c.fillStyle = '#3b3b5c'; rr(-9 + lx, -16, 7, 16, 3); c.fill(); rr(2 - lx, -16, 7, 16, 3); c.fill();
-    c.fillStyle = col; c.strokeStyle = OUT; c.lineWidth = 2; rr(-13, -46 - bob, 26, 34, 9); c.fill(); c.stroke();
-    if (cook) { c.fillStyle = '#fff'; rr(-9, -42 - bob, 18, 26, 5); c.fill(); }
-    c.strokeStyle = col; c.lineWidth = 6; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(-12, -40 - bob); c.lineTo(-18, -26 - bob); c.stroke();
-    c.beginPath(); c.moveTo(12, -40 - bob); c.lineTo(18, -30 - bob); c.stroke();
-    if (a.role === 'fisher') {
-      c.strokeStyle = '#8b5a2b'; c.lineWidth = 3;
-      c.beginPath(); c.moveTo(16, -30 - bob); c.lineTo(34, -100 - bob); c.stroke();
-    } else if (cook) {
-      c.strokeStyle = '#999'; c.lineWidth = 3;
-      c.beginPath(); c.moveTo(18, -30 - bob); c.lineTo(26, -50 - bob); c.stroke();
-      c.fillStyle = '#bbb'; rr(21, -62 - bob, 10, 12, 3); c.fill();
-    } else {
-      c.fillStyle = '#c28a4a'; rr(14, -28 - bob, 14, 14, 3); c.fill();
-    }
-    c.fillStyle = '#ffe0c8'; c.strokeStyle = OUT; c.lineWidth = 2;
-    c.beginPath(); c.arc(0, hy, 15, 0, 7); c.fill(); c.stroke();
-    c.fillStyle = `hsl(${a.hue},55%,30%)`;
-    c.beginPath(); c.arc(0, hy - 1, 16, Math.PI, 0); c.quadraticCurveTo(0, hy - 9, -16, hy - 1); c.fill();
-    c.fillStyle = '#2b1b3d';
-    c.beginPath(); c.ellipse(-6, hy + 1, 3, 4.2, 0, 0, 7); c.fill();
-    c.beginPath(); c.ellipse(6, hy + 1, 3, 4.2, 0, 0, 7); c.fill();
-    c.fillStyle = '#fff';
-    c.beginPath(); c.arc(-7, hy - 1, 1.2, 0, 7); c.fill();
-    c.beginPath(); c.arc(5, hy - 1, 1.2, 0, 7); c.fill();
-    c.fillStyle = 'rgba(255,120,160,.5)';
-    c.beginPath(); c.ellipse(-10, hy + 7, 3.5, 2.2, 0, 0, 7); c.fill();
-    c.beginPath(); c.ellipse(10, hy + 7, 3.5, 2.2, 0, 0, 7); c.fill();
-    c.strokeStyle = '#a0525a'; c.lineWidth = 1.6;
-    c.beginPath(); c.arc(0, hy + 6, 3.5, 0.2, Math.PI - 0.2); c.stroke();
-    if (a.role === 'fisher') {
-      c.fillStyle = '#e8c26b'; c.beginPath(); c.ellipse(0, hy - 10, 22, 5, 0, 0, 7); c.fill();
-      c.beginPath(); c.arc(0, hy - 11, 11, Math.PI, 0); c.fill();
-    } else if (cook) {
-      c.fillStyle = '#fff'; rr(-10, hy - 14, 20, 10, 4); c.fill();
-      [-7, 0, 7].forEach((px) => { c.beginPath(); c.arc(px, hy - 17, 7, 0, 7); c.fill(); });
-    } else {
-      c.fillStyle = '#ff7eb6'; c.beginPath(); c.arc(11, hy - 11, 4, 0, 7); c.fill();
-    }
-    c.restore();
-
-    // รูปโปรไฟล์ + ชื่อ TikTok เหนือหัว
-    const avR = 14 * S, avY = a.y - 124 * s;
-    drawAvatar(a.x, avY, avR, a);
-    const chars = Array.from(a.name);
-    const nm = chars.length > 7 ? chars.slice(0, 7).join('') + '…' : a.name;
-    c.font = `bold ${Math.round(12 * S)}px system-ui,sans-serif`; c.textAlign = 'center';
-    c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.65)';
-    const ly = a.y - 98 * s;
-    c.strokeText(nm, a.x, ly); c.fillStyle = '#fff'; c.fillText(nm, a.x, ly);
-    if (a.role === 'buyer' || a.role === 'helper') {
-      const prog = a.role === 'buyer' ? `${a.got}/${a.need}` : `${a.done}/${a.need}`;
-      c.font = `bold ${Math.round(10 * S)}px system-ui,sans-serif`;
-      const pw = c.measureText(prog).width + 8 * S, ph = 14 * S;
-      c.fillStyle = a.role === 'buyer' ? '#16a34a' : '#7c3aed';
-      rr(a.x + avR - 2 * S, avY + avR - ph + 2 * S, pw, ph, ph / 2); c.fill();
-      c.fillStyle = '#fff'; c.textAlign = 'left';
-      c.fillText(prog, a.x + avR + 2 * S, avY + avR - 2 * S);
-    }
-    if (a.sayT > 0 && a.say) drawBubble(a.x, avY - avR - 6 * S, a.say);
-  }
-
-  function drawFisherLine(a) {
-    if (!['cast', 'wait', 'bite', 'reel'].includes(a.st)) return;
-    const s = S * 0.95;
-    const tip = { x: a.x + 34 * s, y: a.y - 102 * s };
-    const tg = { x: a.x + 46 * S, y: a.y - H * 0.13 };
-    let bx, by;
-    if (a.st === 'cast') {
-      const p = Math.min(1, a.t / 0.6);
-      bx = tip.x + (tg.x - tip.x) * p; by = tip.y + (tg.y - tip.y) * p - Math.sin(p * Math.PI) * 30 * S;
-    } else if (a.st === 'reel') {
-      const p = Math.min(1, a.t / 0.8);
-      bx = tg.x + (tip.x - tg.x) * p; by = tg.y + (tip.y - tg.y) * p - Math.sin(p * Math.PI) * 20 * S;
-    } else {
-      bx = tg.x; by = tg.y + (a.st === 'bite' ? 6 * S + Math.sin(a.t * 40) * 3 * S : Math.sin(time * 2 + a.id) * 2 * S);
-    }
-    c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 1.5;
-    c.beginPath(); c.moveTo(tip.x, tip.y);
-    c.quadraticCurveTo((tip.x + bx) / 2, Math.max(tip.y, by) - 6 * S, bx, by); c.stroke();
-    c.fillStyle = '#fff'; c.beginPath(); c.arc(bx, by, 6 * S, 0, 7); c.fill();
-    c.fillStyle = '#ff3b4e'; c.beginPath(); c.arc(bx, by, 6 * S, Math.PI, 0); c.fill();
-    if (a.st === 'reel' && a.fish) drawFishOn(c, bx, by + 8 * S, 0.3 * S, a.fish, time, 1);
-  }
-
-  // ---------- วาดฉาก ----------
-  function drawScene() {
-    let g = c.createLinearGradient(0, 0, 0, H * 0.12);
-    g.addColorStop(0, '#ffb3a7'); g.addColorStop(1, '#ffe2b8');
-    c.fillStyle = g; c.fillRect(0, 0, W, H * 0.12);
-    g = c.createLinearGradient(0, H * 0.12, 0, H * 0.4);
-    g.addColorStop(0, '#7ad0ff'); g.addColorStop(1, '#1b6fb5');
-    c.fillStyle = g; c.fillRect(0, H * 0.12, W, H * 0.28);
-    ambient.forEach((a) => drawFishOn(c, a.x, H * a.y + Math.sin(time + a.ph) * 6, a.s * S, a.f, time + a.ph, a.v > 0 ? 1 : -1, 0.45));
-    c.strokeStyle = 'rgba(255,255,255,.28)'; c.lineWidth = 2;
-    for (let k = 0; k < 4; k++) {
-      const y = H * 0.14 + k * H * 0.065;
-      c.beginPath();
-      for (let x = 0; x <= W; x += 12) c.lineTo(x, y + Math.sin(x * 0.03 + time * 1.5 + k) * 3);
-      c.stroke();
-    }
-    c.fillStyle = '#9a6a3a'; c.fillRect(0, H * 0.4, W, H * 0.03);
-    c.strokeStyle = 'rgba(0,0,0,.25)'; c.lineWidth = 1;
-    for (let x = 0; x < W; x += 40 * S) { c.beginPath(); c.moveTo(x, H * 0.4); c.lineTo(x, H * 0.43); c.stroke(); }
-    g = c.createLinearGradient(0, H * 0.43, 0, H);
-    g.addColorStop(0, '#f3d9a4'); g.addColorStop(1, '#e0b878');
-    c.fillStyle = g; c.fillRect(0, H * 0.43, W, H * 0.57);
-    drawGrill(); drawBasket(); drawCounter(); drawTray();
-  }
-
-  function drawGrill() {
-    for (let i = 0; i < 3; i++) {
-      const p = slotPos('griller', i), w = 100 * S, y0 = H * 0.56, h = H * 0.04;
-      const ga = slots.griller[i];
-      const active = ga && ga.fish && (ga.st === 'grill' || ga.st === 'work');
-      const base = y0 + h + 16 * S, fh = active ? (14 + 8 * Math.sin(time * 9 + i)) * S : 4 * S;
-      for (let k = 0; k < 6; k++) {
-        const fx = p.x - w / 2 + ((k + 0.5) * w) / 6, hh = fh * (0.7 + 0.3 * Math.sin(time * 11 + k * 2));
-        c.fillStyle = active ? '#ff8a1f' : '#a34a1a';
-        c.beginPath(); c.moveTo(fx - 6 * S, base);
-        c.quadraticCurveTo(fx - 3 * S, base - hh * 0.6, fx, base - hh);
-        c.quadraticCurveTo(fx + 3 * S, base - hh * 0.6, fx + 6 * S, base); c.fill();
-      }
-      c.fillStyle = '#2b2b33'; rr(p.x - w / 2, y0, w, h, 6); c.fill();
-      c.strokeStyle = '#666'; c.lineWidth = 2;
-      for (let k = 1; k < 6; k++) { c.beginPath(); c.moveTo(p.x - w / 2 + (k * w) / 6, y0 + 3); c.lineTo(p.x - w / 2 + (k * w) / 6, y0 + h - 3); c.stroke(); }
-      if (active) {
-        const k = Math.min(1, ga.t / ga.dur);
-        drawFishOn(c, p.x, y0 - 2 * S, 0.42 * S, cooked(ga.fish, k), time, 1);
-        for (let m = 0; m < 3; m++) {
-          const u = ((time * 30 + m * 20) % 50);
-          c.fillStyle = `rgba(230,230,230,${0.5 - u / 100})`;
-          c.beginPath(); c.arc(p.x + Math.sin(u * 0.2 + m) * 6 * S, y0 - 12 * S - u * S, (5 + u * 0.1) * S, 0, 7); c.fill();
-        }
-      }
-    }
-  }
-
-  function drawBasket() {
-    const x = W * 0.07, y = H * 0.6;
-    for (let i = 0; i < Math.min(raw.length, 6); i++) {
-      drawFishOn(c, x + ((i % 3) - 1) * 14 * S, y - 8 * S - Math.floor(i / 3) * 8 * S, 0.22 * S, raw[i], 0, 1);
-    }
-    c.fillStyle = '#a9743c'; c.strokeStyle = OUT; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(x - 30 * S, y - 8 * S); c.lineTo(x + 30 * S, y - 8 * S);
-    c.lineTo(x + 22 * S, y + 14 * S); c.lineTo(x - 22 * S, y + 14 * S); c.closePath(); c.fill(); c.stroke();
-    c.font = `bold ${Math.round(11 * S)}px system-ui,sans-serif`; c.textAlign = 'center';
-    c.fillStyle = '#5b3a29'; c.fillText(`ปลาดิบ ${raw.length}`, x, y + 28 * S);
-  }
-
-  function drawCounter() {
-    const n = 10, aw = W * 0.92, ax = W * 0.04;
-    for (let k = 0; k < n; k++) {
-      c.fillStyle = k % 2 ? '#fff' : '#e8403a';
-      c.beginPath(); c.moveTo(ax + (k * aw) / n, H * 0.625); c.lineTo(ax + ((k + 1) * aw) / n, H * 0.625);
-      c.lineTo(ax + ((k + 1) * aw) / n, H * 0.655); c.arc(ax + ((k + 0.5) * aw) / n, H * 0.655, aw / n / 2, 0, Math.PI);
-      c.closePath(); c.fill();
-    }
-    c.font = `bold ${Math.round(14 * S)}px system-ui,sans-serif`; c.textAlign = 'center';
-    c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.5)';
-    c.strokeText('🍢 ร้านปลาย่าง 🍢', W / 2, H * 0.618); c.fillStyle = '#fff'; c.fillText('🍢 ร้านปลาย่าง 🍢', W / 2, H * 0.618);
-    c.fillStyle = '#8b5a2b'; rr(W * 0.04, H * 0.675, W * 0.92, H * 0.03, 6); c.fill();
-    c.fillStyle = '#b57a3d'; rr(W * 0.04, H * 0.675, W * 0.92, H * 0.012, 6); c.fill();
-    const cnt = Math.min(ready.length, 8);
-    for (let i = 0; i < cnt; i++) drawFishOn(c, W * 0.12 + i * ((W * 0.76) / 8), H * 0.675, 0.3 * S, cooked(ready[i], 1), 0, 1);
-  }
-
-  function drawTray() {
-    const w = Math.min(W * 0.58, 240 * S), h = 26 * S, x = W * 0.04, y = H * 0.94;
-    c.fillStyle = 'rgba(255,255,255,.95)'; rr(x, y, w, h, h / 2); c.fill();
-    c.textAlign = 'left'; c.font = `bold ${Math.round(13 * S)}px system-ui,sans-serif`;
-    let px = x + 12 * S; const ty = y + h * 0.68;
-    c.fillStyle = '#333'; c.fillText('บนถาด ', px, ty); px += c.measureText('บนถาด ').width;
-    c.fillStyle = '#16a34a'; c.fillText(String(ready.length), px, ty); px += c.measureText(String(ready.length)).width;
-    c.fillStyle = '#777'; c.fillText(' /' + CAP.toLocaleString('en-US'), px, ty);
-  }
-
-  function draw() {
-    drawScene();
-    actors.slice().sort((a, b) => a.y - b.y).forEach((a) => { drawPerson(a); if (a.role === 'fisher') drawFisherLine(a); });
-    floats.forEach((f) => {
-      c.globalAlpha = Math.max(0, Math.min(1, f.life));
-      c.font = `bold ${Math.round(16 * S)}px system-ui,sans-serif`; c.textAlign = 'center';
-      c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.6)'; c.strokeText(f.text, f.x, f.y);
-      c.fillStyle = f.col; c.fillText(f.text, f.x, f.y);
-    });
-    c.globalAlpha = 1;
-  }
-
-  // ---------- UI: ป้ายของขวัญ + อันดับ ----------
-  const testNames = ['พี่หมี', 'น้องมะนาว', 'ลุงโอ', 'แม่ส้ม', 'เจ้าเหมียว', 'ต้นกล้า'];
-  const randUser = () => { const n = testNames[Math.floor(Math.random() * testNames.length)]; return { id: n, name: n, pic: '' }; };
-
-  function addRow(parent, icon, text, onClick) {
-    const row = document.createElement('div'); row.className = 'gr';
-    const ic = document.createElement('span'); ic.className = 'ic'; ic.textContent = icon;
-    const tx = document.createElement('span'); tx.textContent = text;
-    row.appendChild(ic); row.appendChild(tx);
-    row.onclick = () => { FX.unlock(); onClick(); };
-    parent.appendChild(row);
-  }
-  GIFT_TABLE.forEach((g) => addRow($(g.type === 'buy' ? 'pBuy' : 'pHelp'), g.icon, g.text, () => onGift(g, randUser(), 1, g.coins)));
-  LIKE_RULES.forEach((r) => addRow($(r.type === 'buy' ? 'pBuy' : 'pHelp'), r.icon, r.text, () => onLike(randUser(), r.every)));
-
-  function renderBoard(el, map, icon) {
-    el.textContent = '';
-    [...map.values()].sort((a, b) => b.v - a.v).slice(0, 3).forEach((e) => {
-      const r = document.createElement('div'); r.className = 'r';
-      const im = document.createElement('img'); im.className = 'av'; im.alt = '';
-      if (e.pic) { im.src = avUrl(e.pic); im.onerror = () => { im.style.visibility = 'hidden'; }; } else im.style.visibility = 'hidden';
-      const n = document.createElement('span'); n.className = 'n'; n.textContent = e.name;
-      const val = document.createElement('span'); val.className = 'v'; val.textContent = icon + ' ' + e.v.toLocaleString('en-US');
-      r.appendChild(im); r.appendChild(n); r.appendChild(val);
-      el.appendChild(r);
-    });
-  }
-  setInterval(() => {
-    renderBoard($('bCoins'), coins, '🪙');
-    renderBoard($('bLikes'), likes, '♥');
-    const q = pending.buyer.length ? ` · คิวซื้อ ${pending.buyer.length}` : '';
-    const q2 = pending.helper.length ? ` · คิวช่วย ${pending.helper.length}` : '';
-    $('status').textContent = (wsOK ? '🟢 เชื่อมต่อ TikTok แล้ว' : '⚪ ออฟไลน์ (โหมดทดสอบ)') + q + q2;
-  }, 1000);
-
-  document.addEventListener('pointerdown', () => FX.unlock());
-
-  function connectWS() {
-    if (location.protocol === 'file:') return;
-    try {
-      const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-      ws.onopen = () => { wsOK = true; };
-      ws.onclose = () => { wsOK = false; setTimeout(connectWS, 3000); };
-      ws.onmessage = (e) => {
-        const d = JSON.parse(e.data);
-        const u = { id: d.id || d.user, name: d.user || 'ผู้ชม', pic: d.pic || '' };
-        if (d.type === 'gift') {
-          const g = matchGift(d.name);
-          if (g) onGift(g, u, d.count, d.diamonds);
-          else console.log('ของขวัญที่ยังไม่ได้ตั้งค่าใน data.js:', d.name);
-        } else if (d.type === 'like') onLike(u, d.count || 1);
-      };
-    } catch (e) {}
-  }
-  connectWS();
-
-  // แม่ค้ากับลุงตกปลาประจำร้าน
-  slots.fisher[0] = makeActor('fisher', 0, { name: 'ลุงเบ็ด', perm: true, lv: 2 });
-  slots.griller[0] = makeActor('griller', 0, { name: 'แม่ค้า', perm: true, lv: 2 });
-
-  let t0 = performance.now();
-  function frame(now) {
-    const dt = Math.min((now - t0) / 1000, 0.05);
-    t0 = now; update(dt); draw();
-    requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
-})();
+function connect() {
+  const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.t === 'gift') onGift(m); else if (m.t === 'chat') onChat(m); else if (m.t === 'share') onShare(m); };
+  ws.onclose = () => setTimeout(connect, 2000);
+}
+connect();
+(function loop(t) { step(t); draw(t); requestAnimationFrame(loop); })(performance.now());
