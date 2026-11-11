@@ -24,12 +24,43 @@
   };
   const cooked = (f, k) => ({ ...f, rar: 1, colors: [mix(f.colors[0], '#7a3f17', k), mix(f.colors[1], '#e0a45f', k)] });
   const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const avUrl = (pic) => '/avatar?u=' + encodeURIComponent(pic);
 
   function starPath(ctx, x, y, r) {
     ctx.beginPath(); ctx.moveTo(x, y - r);
     ctx.quadraticCurveTo(x, y, x + r, y); ctx.quadraticCurveTo(x, y, x, y + r);
     ctx.quadraticCurveTo(x, y, x - r, y); ctx.quadraticCurveTo(x, y, x, y - r);
     ctx.fill();
+  }
+
+  // ---------- รูปโปรไฟล์ ----------
+  const avCache = new Map();
+  function getAvatar(pic) {
+    if (!pic) return null;
+    let e = avCache.get(pic);
+    if (e) return e;
+    e = { img: new Image(), ok: false };
+    e.img.onload = () => { e.ok = true; };
+    e.img.onerror = () => { e.ok = false; };
+    e.img.src = avUrl(pic);
+    avCache.set(pic, e);
+    return e;
+  }
+  function drawAvatar(x, y, r, a) {
+    c.save();
+    c.beginPath(); c.arc(x, y, r, 0, 7); c.closePath();
+    if (a.av && a.av.ok) {
+      c.clip(); c.drawImage(a.av.img, x - r, y - r, r * 2, r * 2);
+    } else {
+      c.fillStyle = a.perm ? ROLES[a.role].col : `hsl(${a.hue},60%,55%)`; c.fill();
+      c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = `bold ${Math.round(r * 1.1)}px system-ui,sans-serif`;
+      c.fillText(a.perm ? ROLES[a.role].emoji : (Array.from(a.name)[0] || '?'), x, y + 1);
+      c.textBaseline = 'alphabetic';
+    }
+    c.restore();
+    c.lineWidth = 2.5; c.strokeStyle = '#fff';
+    c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke();
   }
 
   // ---------- วาดปลาสไตล์อนิเมะ ----------
@@ -133,13 +164,15 @@
   function slotPos(role, i) {
     if (role === 'fisher') return { x: W * 0.3, y: H * 0.415 };
     if (role === 'griller' || role === 'helper') return { x: W * (0.25 + i * 0.25), y: H * 0.55 };
-    return { x: W * (0.09 + i * 0.125), y: H * 0.82 };
+    return { x: W * (0.08 + i * 0.11), y: H * (i % 2 ? 0.875 : 0.8) };
   }
 
   function makeActor(role, i, o) {
     const p = slotPos(role, i);
     const a = {
-      id: ++uid, role, slot: i, lv: o.lv || 2, name: String(o.name || 'ผู้เล่น').slice(0, 9),
+      id: ++uid, role, slot: i, lv: o.lv || 2,
+      name: Array.from(String(o.name || 'ผู้ชม')).slice(0, 24).join(''),
+      pic: o.pic || '', av: getAvatar(o.pic),
       need: o.need || 0, got: 0, done: 0, perm: !!o.perm,
       x: role === 'buyer' ? W + 50 : -50, y: p.y, tx: p.x, ty: p.y,
       st: 'walk', t: 0, dur: 0, cool: 0, idle: 0, hue: Math.floor(Math.random() * 360),
@@ -171,38 +204,47 @@
     a.st = 'leave'; a.tx = a.role === 'buyer' ? W + 60 : -60;
   }
 
-  // ---------- ของขวัญ / ไลก์ ----------
+  // ---------- ของขวัญ / ไลก์ (u = { id, name, pic }) ----------
   const coins = new Map(), likes = new Map();
   const likeAcc = LIKE_RULES.map(() => 0);
 
-  function order(type, n, name, tier) {
+  function bump(map, u, n) {
+    const key = u.id || u.name;
+    const e = map.get(key) || { name: u.name, pic: u.pic, v: 0 };
+    e.v += n; e.name = u.name; if (u.pic) e.pic = u.pic;
+    map.set(key, e);
+  }
+  function order(type, n, u, tier) {
     n = Math.max(1, Math.min(n, 60));
-    (type === 'buy' ? pending.buyer : pending.helper).push({ name, need: n, lv: tier || 3 });
+    (type === 'buy' ? pending.buyer : pending.helper).push({ name: u.name, pic: u.pic, need: n, lv: tier || 3 });
   }
-  function onGift(g, user, count, coin) {
+  function onGift(g, u, count, coin) {
+    const k = Math.max(1, count || 1);
     let n = g.cups ? g.cups * CUP : rnd(g.min, g.max);
-    n *= Math.max(1, count || 1);
-    order(g.type, n, user, g.tier);
-    coins.set(user, (coins.get(user) || 0) + (coin || 0) * Math.max(1, count || 1));
+    order(g.type, n * k, u, g.tier);
+    bump(coins, u, (coin || 0) * k);
   }
-  function onLike(user, count) {
-    likes.set(user, (likes.get(user) || 0) + count);
+  function onLike(u, count) {
+    bump(likes, u, count);
     LIKE_RULES.forEach((r, i) => {
       likeAcc[i] += count;
-      while (likeAcc[i] >= r.every) { likeAcc[i] -= r.every; order(r.type, r.n, user, 2); }
+      while (likeAcc[i] >= r.every) { likeAcc[i] -= r.every; order(r.type, r.n, u, 2); }
     });
   }
 
   // ---------- ข้อความดวงตอนลูกค้าซื้อ ----------
   function showToast(a, f) {
     if (toasts.length > 6) toasts.shift();
-    toasts.push({ who: a.name, n: a.got, f, fo: nextFortune(f.key) });
+    toasts.push({ who: a.name, pic: a.pic, n: a.got, f, fo: nextFortune(f.key) });
   }
   function toastStep(dt) {
     if (toastOn) { toastT -= dt; if (toastT <= 0) { toastOn = false; $('toast').style.display = 'none'; } }
     if (!toastOn && toasts.length) {
       const t = toasts.shift();
       toastOn = true; toastT = Math.max(5, t.fo.text.length * 0.09);
+      const av = $('tAv');
+      if (t.pic) { av.src = avUrl(t.pic); av.style.display = 'block'; } else av.style.display = 'none';
+      av.onerror = () => { av.style.display = 'none'; };
       $('tName').textContent = `${t.f.th} ${'★'.repeat(t.f.rar)}`;
       $('tWho').textContent = `${t.who} ซื้อปลาย่าง ${t.n} ชิ้น`;
       $('tText').textContent = t.fo.text;
@@ -213,6 +255,7 @@
   }
 
   // ---------- พฤติกรรม ----------
+  const FLOAT_Y = 150;
   function arrive(a) {
     a.t = 0;
     if (a.role === 'fisher') { a.st = 'cast'; FX.cast(); }
@@ -233,7 +276,7 @@
         break;
       case 'reel':
         if (a.t > 0.8) {
-          if (raw.length < 40) { raw.push(a.fish); float(a.x, a.y - 110 * S, '+' + a.fish.th, '#ffd666'); }
+          if (raw.length < 40) { raw.push(a.fish); float(a.x, a.y - FLOAT_Y * S, '+' + a.fish.th, '#ffd666'); }
           FX.splash(); a.fish = null; a.st = 'cast'; a.t = 0;
         }
         break;
@@ -246,7 +289,7 @@
         break;
       case 'grill':
         if (a.t >= a.dur) {
-          if (ready.length < CAP) { ready.push(a.fish); float(a.x, a.y - 110 * S, '+ปลาย่าง', '#ff9f43'); }
+          if (ready.length < CAP) { ready.push(a.fish); float(a.x, a.y - FLOAT_Y * S, '+ปลาย่าง', '#ff9f43'); }
           FX.ding(); a.fish = null; a.st = 'done'; a.t = 0;
         }
         break;
@@ -264,7 +307,7 @@
     } else if (a.t >= a.dur) {
       ready.push(a.fish); a.fish = null; a.done++;
       if (a.done >= a.need) {
-        float(a.x, a.y - 110 * S, `+${a.need} ชิ้น`, '#c4a1ff');
+        float(a.x, a.y - FLOAT_Y * S, `+${a.need} ชิ้น`, '#c4a1ff');
         FX.ding(); say(a, 'ช่วยเสร็จแล้ว!'); leave(a);
       }
     }
@@ -374,14 +417,25 @@
     }
     c.restore();
 
+    // รูปโปรไฟล์ + ชื่อ TikTok เหนือหัว
+    const avR = 14 * S, avY = a.y - 124 * s;
+    drawAvatar(a.x, avY, avR, a);
+    const chars = Array.from(a.name);
+    const nm = chars.length > 7 ? chars.slice(0, 7).join('') + '…' : a.name;
     c.font = `bold ${Math.round(12 * S)}px system-ui,sans-serif`; c.textAlign = 'center';
-    c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.6)';
-    let label = `${ROLES[a.role].emoji} ${a.name}`;
-    if (a.role === 'buyer') label += ` ${a.got}/${a.need}`;
-    if (a.role === 'helper') label += ` ${a.done}/${a.need}`;
-    const ly = a.y - 100 * s;
-    c.strokeText(label, a.x, ly); c.fillStyle = '#fff'; c.fillText(label, a.x, ly);
-    if (a.sayT > 0 && a.say) drawBubble(a.x, a.y - 114 * s, a.say);
+    c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,.65)';
+    const ly = a.y - 98 * s;
+    c.strokeText(nm, a.x, ly); c.fillStyle = '#fff'; c.fillText(nm, a.x, ly);
+    if (a.role === 'buyer' || a.role === 'helper') {
+      const prog = a.role === 'buyer' ? `${a.got}/${a.need}` : `${a.done}/${a.need}`;
+      c.font = `bold ${Math.round(10 * S)}px system-ui,sans-serif`;
+      const pw = c.measureText(prog).width + 8 * S, ph = 14 * S;
+      c.fillStyle = a.role === 'buyer' ? '#16a34a' : '#7c3aed';
+      rr(a.x + avR - 2 * S, avY + avR - ph + 2 * S, pw, ph, ph / 2); c.fill();
+      c.fillStyle = '#fff'; c.textAlign = 'left';
+      c.fillText(prog, a.x + avR + 2 * S, avY + avR - 2 * S);
+    }
+    if (a.sayT > 0 && a.say) drawBubble(a.x, avY - avR - 6 * S, a.say);
   }
 
   function drawFisherLine(a) {
@@ -490,7 +544,7 @@
   }
 
   function drawTray() {
-    const w = Math.min(W * 0.58, 240 * S), h = 26 * S, x = W * 0.04, y = H * 0.925;
+    const w = Math.min(W * 0.58, 240 * S), h = 26 * S, x = W * 0.04, y = H * 0.94;
     c.fillStyle = 'rgba(255,255,255,.95)'; rr(x, y, w, h, h / 2); c.fill();
     c.textAlign = 'left'; c.font = `bold ${Math.round(13 * S)}px system-ui,sans-serif`;
     let px = x + 12 * S; const ty = y + h * 0.68;
@@ -513,7 +567,7 @@
 
   // ---------- UI: ป้ายของขวัญ + อันดับ ----------
   const testNames = ['พี่หมี', 'น้องมะนาว', 'ลุงโอ', 'แม่ส้ม', 'เจ้าเหมียว', 'ต้นกล้า'];
-  const randName = () => testNames[Math.floor(Math.random() * testNames.length)];
+  const randUser = () => { const n = testNames[Math.floor(Math.random() * testNames.length)]; return { id: n, name: n, pic: '' }; };
 
   function addRow(parent, icon, text, onClick) {
     const row = document.createElement('div'); row.className = 'gr';
@@ -523,17 +577,18 @@
     row.onclick = () => { FX.unlock(); onClick(); };
     parent.appendChild(row);
   }
-  GIFT_TABLE.forEach((g) => addRow($(g.type === 'buy' ? 'pBuy' : 'pHelp'), g.icon, g.text, () => onGift(g, randName(), 1, g.coins)));
-  LIKE_RULES.forEach((r) => addRow($(r.type === 'buy' ? 'pBuy' : 'pHelp'), r.icon, r.text, () => onLike(randName(), r.every)));
+  GIFT_TABLE.forEach((g) => addRow($(g.type === 'buy' ? 'pBuy' : 'pHelp'), g.icon, g.text, () => onGift(g, randUser(), 1, g.coins)));
+  LIKE_RULES.forEach((r) => addRow($(r.type === 'buy' ? 'pBuy' : 'pHelp'), r.icon, r.text, () => onLike(randUser(), r.every)));
 
   function renderBoard(el, map, icon) {
     el.textContent = '';
-    [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).forEach(([name, v], i) => {
+    [...map.values()].sort((a, b) => b.v - a.v).slice(0, 3).forEach((e) => {
       const r = document.createElement('div'); r.className = 'r';
-      const rank = document.createElement('span'); rank.textContent = String(i + 1);
-      const n = document.createElement('span'); n.className = 'n'; n.textContent = name;
-      const val = document.createElement('span'); val.className = 'v'; val.textContent = icon + ' ' + v.toLocaleString('en-US');
-      r.appendChild(rank); r.appendChild(n); r.appendChild(val);
+      const im = document.createElement('img'); im.className = 'av'; im.alt = '';
+      if (e.pic) { im.src = avUrl(e.pic); im.onerror = () => { im.style.visibility = 'hidden'; }; } else im.style.visibility = 'hidden';
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = e.name;
+      const val = document.createElement('span'); val.className = 'v'; val.textContent = icon + ' ' + e.v.toLocaleString('en-US');
+      r.appendChild(im); r.appendChild(n); r.appendChild(val);
       el.appendChild(r);
     });
   }
@@ -555,11 +610,12 @@
       ws.onclose = () => { wsOK = false; setTimeout(connectWS, 3000); };
       ws.onmessage = (e) => {
         const d = JSON.parse(e.data);
+        const u = { id: d.id || d.user, name: d.user || 'ผู้ชม', pic: d.pic || '' };
         if (d.type === 'gift') {
           const g = matchGift(d.name);
-          if (g) onGift(g, d.user, d.count, d.diamonds);
+          if (g) onGift(g, u, d.count, d.diamonds);
           else console.log('ของขวัญที่ยังไม่ได้ตั้งค่าใน data.js:', d.name);
-        } else if (d.type === 'like') onLike(d.user, d.count || 1);
+        } else if (d.type === 'like') onLike(u, d.count || 1);
       };
     } catch (e) {}
   }
