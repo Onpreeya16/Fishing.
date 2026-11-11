@@ -1,10 +1,14 @@
 const FX = {
-  ctx: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null, unlocked: 0, dbg: 'TTS: ยังไม่ได้เริ่ม', keep: 0,
-  SPEED: 1.4, // ความเร็วอ่านออกเสียง: 1.0 = ปกติ, 1.4 = เร็วขึ้น, 1.7 = เร็วมาก (ถ้าเร็วไปจนฟังไม่ทัน ลดลง)
+  ctx: null, master: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null, unlocked: 0, dbg: 'TTS: ยังไม่ได้เริ่ม', keep: 0,
+  SPEED: 1.4,     // ความเร็วอ่านออกเสียง: 1.0 = ปกติ, 1.4 = เร็วขึ้น, 1.7 = เร็วมาก
+  EFFECT_VOL: 0.5,  // ความดังเอฟเฟกต์ตอนไม่มีเสียงพูด (0 = ปิด, 1 = เต็ม)
+  EFFECT_VOL_TALK: 0.15, // ความดังเอฟเฟกต์ตอนมีเสียงพูด (ตั้ง 0 ถ้าอยากให้เงียบสนิทตอนพูด)
   init() {
     if (!this.ctx) {
       const A = window.AudioContext || window.webkitAudioContext; this.ctx = new A();
       this.ctx.onstatechange = () => { if (this.ctx.state !== 'running') this.wake(); };
+      // ปุ่มคุมระดับเสียงเอฟเฟกต์ทุกเสียง (ผ่านตัวนี้ตัวเดียว)
+      this.master = this.ctx.createGain(); this.master.gain.value = this.EFFECT_VOL; this.master.connect(this.ctx.destination);
     }
     this.wake();
     // มือถือจะปิดระบบเสียงเอฟเฟกต์ทุกครั้งที่เสียงพูดเล่น: คอยปลุกกลับเรื่อยๆ
@@ -15,6 +19,12 @@ const FX = {
   // ปลุกระบบเสียงเอฟเฟกต์ถ้าถูกปิด/หยุดชั่วคราว (suspended / interrupted)
   wake() {
     try { if (this.ctx && this.ctx.state !== 'running') { const p = this.ctx.resume(); if (p && p.catch) p.catch(() => {}); } } catch (e) {}
+  },
+  // หรี่เสียงเอฟเฟกต์ลงตอนมีเสียงพูด (หรือรอคิวพูด) แล้วค่อยๆ ดังกลับเมื่อพูดจบ
+  duck() {
+    if (!this.ctx || !this.master) return;
+    const v = (this.talking || this.sq.length) ? this.EFFECT_VOL_TALK : this.EFFECT_VOL;
+    try { this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.08); } catch (e) { this.master.gain.value = v; }
   },
   // มือถือต้องปลดล็อกเสียงพูดในจังหวะที่ผู้ใช้แตะจอ (เรียกจาก init ตอนแตะเริ่ม)
   unlock() {
@@ -35,7 +45,7 @@ const FX = {
     o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
     if (slide) o.frequency.linearRampToValueAtTime(Math.max(30, f + slide), t + d);
     g.gain.setValueAtTime(v || 0.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
-    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t + d);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + d);
   },
   gong() { this.tone(110, 2.2, 'sine', 0.4); this.tone(220, 1.6, 'triangle', 0.15); },
   chime() { [880, 1175, 1568].forEach((f, i) => this.tone(f, 0.9, 'sine', 0.12, i * 0.12)); },
@@ -47,13 +57,13 @@ const FX = {
     if (!this.ctx) return; this.wake(); const c = this.ctx, n = c.sampleRate * 0.4, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
     for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
     const s = c.createBufferSource(), fl = c.createBiquadFilter(), g = c.createGain(); s.buffer = b; fl.type = 'highpass'; fl.frequency.value = 5000; g.gain.value = 0.07;
-    s.connect(fl); fl.connect(g); g.connect(c.destination); s.start();
+    s.connect(fl); fl.connect(g); g.connect(this.master); s.start();
   },
   erhu(f, d, v) { // เสียงซอ: เลื่อยฟันปลา + กรอง + สั่นเสียง
     if (!this.ctx) return; this.wake(); const c = this.ctx, t = c.currentTime, o = c.createOscillator(), l = c.createOscillator(), lg = c.createGain(), fl = c.createBiquadFilter(), g = c.createGain();
     o.type = 'sawtooth'; o.frequency.value = f; l.frequency.value = 5.5; lg.gain.value = f * 0.012; l.connect(lg); lg.connect(o.frequency); fl.type = 'lowpass'; fl.frequency.value = 1600;
     g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(v, t + 0.12); g.gain.exponentialRampToValueAtTime(0.001, t + d);
-    o.connect(fl); fl.connect(g); g.connect(c.destination); o.start(t); l.start(t); o.stop(t + d); l.stop(t + d);
+    o.connect(fl); fl.connect(g); g.connect(this.master); o.start(t); l.start(t); o.stop(t + d); l.stop(t + d);
   },
   // เพลงบรรเลงสไตล์ตรุษจีน: กู่เจิงเดินทำนอง + ซอ + กลองและฉาบจังหวะสิงโต (เรียบเรียงเอง)
   music() {
@@ -75,7 +85,7 @@ const FX = {
   // อ่านออกเสียงทีละข้อความ ไม่ตัดกัน; start() เรียกตอนเริ่มพูด, end() ตอนพูดจบ
   say(text, start, end) {
     const t = String(text).replace(/[\u3400-\u9fff]/g, '').replace(/[·›\/]/g, ', ').replace(/[^\u0E00-\u0E7Fa-zA-Z0-9 ,.:!?()]/g, ' ').replace(/\s+/g, ' ').trim();
-    this.sq.push({ t, start, end }); if (!this.talking) this.next();
+    this.sq.push({ t, start, end }); this.duck(); if (!this.talking) this.next();
   },
   // ตัดข้อความเป็นท่อนสั้น (ไม่เกิน ~80 ตัวอักษร) ตัดตามคำ เพื่อไม่ให้เบราว์เซอร์หยุดอ่านกลางคัน
   chunk(t) {
@@ -88,8 +98,8 @@ const FX = {
     return out;
   },
   next() {
-    const j = this.sq.shift(); if (!j) { this.talking = false; return; }
-    this.talking = true; let done = false;
+    const j = this.sq.shift(); if (!j) { this.talking = false; this.duck(); return; }
+    this.talking = true; this.duck(); let done = false;
     const fin = () => { if (done) return; done = true; clearTimeout(tm); this.wake(); j.end && j.end(); this.next(); };
     // กันค้าง: ถ้าพูดนานเกินไปให้ตัดแล้วไปข้อความถัดไป
     const tm = setTimeout(() => {
@@ -118,7 +128,7 @@ const FX = {
     const vs = ss.getVoices(), v = vs.find((x) => x.lang.replace('_', '-').toLowerCase().startsWith('th'));
     if (vs.length && !v) { this.dbg = 'TTS: ไม่มีเสียงไทยในเครื่อง -> ออนไลน์'; return web(); }
     try {
-      const u = new SpeechSynthesisUtterance(t); u.lang = 'th-TH'; u.rate = this.SPEED; if (v) u.voice = v;
+      const u = new SpeechSynthesisUtterance(t); u.lang = 'th-TH'; u.rate = this.SPEED; u.volume = 1; if (v) u.voice = v;
       u.onstart = () => { this.dbg = 'TTS: กำลังพูด (เสียงในเครื่อง)'; };
       u.onend = go;
       u.onerror = (e) => {
@@ -139,7 +149,7 @@ const FX = {
       a.onended = () => { this.dbg = 'TTS: เล่นเสียงออนไลน์จบ'; go(); };
       a.onerror = () => { this.dbg = 'TTS: โหลดเสียงออนไลน์ไม่ได้'; go(); };
       a.src = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=th&q=' + encodeURIComponent(t);
-      a.defaultPlaybackRate = sp; a.playbackRate = sp; // เร่งความเร็วเสียงออนไลน์
+      a.volume = 1; a.defaultPlaybackRate = sp; a.playbackRate = sp; // เร่งความเร็วเสียงออนไลน์
       this.dbg = 'TTS: กำลังพูด (เสียงออนไลน์)';
       const p = a.play(); if (p && p.catch) p.catch((e) => { this.dbg = 'TTS: เล่นเสียงออนไลน์ไม่ได้ (' + e.name + ')'; go(); });
     } catch (e) { go(); }
@@ -158,7 +168,7 @@ const FX = {
     // โหมดแก้ปัญหา: เปิดเกมด้วย ?debug เพื่อดูสถานะเสียงบนจอ
     if (location.search.includes('debug')) {
       g.font = '16px sans-serif'; g.textAlign = 'left'; g.lineWidth = 3; g.strokeStyle = '#000'; g.fillStyle = '#7CFC00';
-      const s = this.dbg + ' | เอฟเฟกต์: ' + (this.ctx ? this.ctx.state : '-') + ' | คิวพูด ' + this.sq.length + (this.talking ? ' | talking' : '');
+      const s = this.dbg + ' | เอฟเฟกต์: ' + (this.ctx ? this.ctx.state : '-') + ' vol ' + (this.master ? this.master.gain.value.toFixed(2) : '-') + ' | คิวพูด ' + this.sq.length + (this.talking ? ' | talking' : '');
       g.strokeText(s, 14, 1215); g.fillText(s, 14, 1215);
     }
   }
