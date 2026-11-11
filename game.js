@@ -3,8 +3,9 @@ cv.width = W; cv.height = H;
 const SANS = "'Noto Sans Thai',Sarabun,Tahoma,sans-serif";
 const TEST = location.search.includes('test'), seg = new Intl.Segmenter('th', { granularity: 'word' });
 const VOICE = !location.search.includes('voice=off'); // ?voice=off ปิดเสียงอ่านของเกม (ใช้เสียงอ่านจากโปรแกรมอื่นแทน)
+const READ_ALL = true; // true = อ่านคำทำนายทุกบรรทัด, false = อ่านแค่บรรทัดแรก
 const IDLE = 'ส่งของขวัญเพื่อรับคำอวยพร กดหัวใจครบ 50 ครั้งเพื่อเสี่ยงเซียมซี พิมพ์ สาธุ ในแชตเพื่อน้อมรับ';
-const POP_MS = 6500;   // ป๊อปอัปคำอวยพรแสดงกี่มิลลิวินาที
+const POP_MS = 4500;   // ป๊อปอัปแสดงอย่างน้อยกี่มิลลิวินาที (เปิดเสียง = รออ่านจบก่อนค่อยเปลี่ยน)
 const MAXP = 24;       // จำนวนคนสูงสุดบนจอ เต็มแล้วคนเก่าสุดจะค่อยๆ จางหายไป
 const HEARTS = 50;     // กดหัวใจครบกี่ครั้งถึงได้เสี่ยงเซียมซี 1 ครั้ง
 const queue = [], users = {}, counts = { altar: 0, rice: 0, fish: 0 }, shared = {}, ST = {}, walkers = [], sadhu = [], lastSadhu = {}, likes = {};
@@ -15,7 +16,7 @@ BLESS.buei = ['ขอให้ทุกความตั้งใจสมห�
 const _mk = makeReading;
 makeReading = (id) => { const o = _mk(id); if (id === 'buei') o.lines = [pk(BLESS.buei)]; return o; };
 
-// คำพูดตอนอ่านออกเสียง: "ขอบคุณคุณ ... <ทำอะไร> <คำอวยพรสั้นๆ>"
+// คำพูดตอนอ่านออกเสียง: "ขอบคุณคุณ ... <ทำอะไร> <คำอวยพร/คำทำนาย>"
 const ACT = { altar: 'ไหว้เทพประธาน', rice: 'แจกข้าวสาร', fish: 'ปล่อยปลาคาร์ป', almanac: 'ดูวันดีวันห้าม', work: 'ดูดวงการงาน', love: 'ดูดวงความรัก', study: 'ดูดวงการเรียน', money: 'ดูดวงการเงิน', buei: 'ทอยปวย', qian: 'เสี่ยงเซียมซี' };
 const LUCK = ['โชคดีมีชัย การงานราบรื่น', 'โชคดีมีชัย ทำสิ่งใดก็ราบรื่น', 'ใจเย็นๆ รอจังหวะดีๆ จะมาถึง', 'ระวังตัวสักนิด แล้วจะปลอดภัย'];
 
@@ -106,7 +107,8 @@ function run(it) {
 function arrive(w, now) {
   w.arrivedAt = now;
   const r = makeReading(w.st), s = ST[w.st];
-  const msg = w.st === 'qian' ? LUCK[r.lv >= 0 ? r.lv : 1] : r.lines[0];
+  const body = READ_ALL ? r.lines.join(' ') : r.lines[0];
+  const msg = w.st === 'qian' ? LUCK[r.lv >= 0 ? r.lv : 1] + (READ_ALL ? '. ' + body : '') : body;
   const txt = 'ขอบคุณคุณ ' + trunc(w.n, 10) + ' ' + ACT[w.st] + '. ' + msg;
   pq.push(Object.assign(r, { user: w.n, pic: w.pic, handle: w.handle, st: w.st, txt, w, t0: 0, end: 0 }));
   if (pq.length > 25) { const d = pq.shift(); d.w.done = 1; }
@@ -119,10 +121,13 @@ function arrive(w, now) {
 }
 function step(now) {
   if (!started) return;
-  // ป๊อปอัปคำอวยพรขึ้นทีละใบ ใบละ POP_MS (6.5 วินาที) แล้วใบถัดไปขึ้นต่อ
+  // ป๊อปอัปคำอวยพรขึ้นทีละใบ: เปิดเสียง = ค้างจนอ่านจบ (แล้วค้างต่ออีกครึ่งวินาที) ถึงจะขึ้นใบถัดไป
   if (!pops.length && pq.length) {
-    const p = pq.shift(); p.t0 = now; p.end = now + POP_MS; pops.push(p);
-    if (VOICE && FX.sq.length < 2) FX.say(p.txt);
+    const p = pq.shift(); p.t0 = now; pops.push(p);
+    if (VOICE) {
+      p.end = now + 90000; // รอจนเสียงอ่านจบ (ตัวกันค้างอยู่ใน fx.js)
+      FX.say(p.txt, null, () => { p.end = Math.max(performance.now() + 700, p.t0 + POP_MS); });
+    } else p.end = now + Math.max(POP_MS, 2500 + [...p.txt].length * 110);
   }
   const active = pops.length > 0 || pq.length > 0;
   if (queue.length && now - lastStep > (queue.length > 10 ? 250 : 600) && walkers.filter((w) => !w.arrivedAt).length < 6) {
