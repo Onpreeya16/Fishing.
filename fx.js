@@ -16,16 +16,34 @@ const FX = {
   chime() { [880, 1175, 1568].forEach((f, i) => this.tone(f, 0.9, 'sine', 0.12, i * 0.12)); },
   clack() { this.tone(900, 0.08, 'square', 0.12); this.tone(600, 0.08, 'square', 0.1, 0.12); },
   splash() { this.tone(400, 0.25, 'sine', 0.1, 0, -250); },
-  // เพลงบรรเลงสไตล์จีน (pentatonic) เล่นวนตลอด เสียงเบา
+  pluck(f) { this.tone(f, 0.5, 'triangle', 0.06); this.tone(f * 2, 0.25, 'sine', 0.02); },
+  drum() { this.tone(130, 0.3, 'sine', 0.2, 0, -90); },
+  cym() {
+    if (!this.ctx) return; const c = this.ctx, n = c.sampleRate * 0.4, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = c.createBufferSource(), fl = c.createBiquadFilter(), g = c.createGain(); s.buffer = b; fl.type = 'highpass'; fl.frequency.value = 5000; g.gain.value = 0.07;
+    s.connect(fl); fl.connect(g); g.connect(c.destination); s.start();
+  },
+  erhu(f, d, v) { // เสียงซอ: เลื่อยฟันปลา + กรอง + สั่นเสียง
+    if (!this.ctx) return; const c = this.ctx, t = c.currentTime, o = c.createOscillator(), l = c.createOscillator(), lg = c.createGain(), fl = c.createBiquadFilter(), g = c.createGain();
+    o.type = 'sawtooth'; o.frequency.value = f; l.frequency.value = 5.5; lg.gain.value = f * 0.012; l.connect(lg); lg.connect(o.frequency); fl.type = 'lowpass'; fl.frequency.value = 1600;
+    g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(v, t + 0.12); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+    o.connect(fl); fl.connect(g); g.connect(c.destination); o.start(t); l.start(t); o.stop(t + d); l.stop(t + d);
+  },
+  // เพลงบรรเลงสไตล์ตรุษจีน: กู่เจิงเดินทำนอง + ซอ + กลองและฉาบจังหวะสิงโต (เรียบเรียงเอง)
   music() {
     if (this.mus || !this.ctx) return; this.mus = 1;
-    const P = [293.66, 329.63, 392, 440, 493.88, 587.33, 659.25]; let i = 3;
+    const S = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1318.5];
+    const PH = [[0, 2, 3, 2, 4, 3, 2, 0, 3, 4, 5, 4, 3, 2, 0, -1], [2, 3, 4, 5, 4, 3, 2, 3, 4, 5, 6, 5, 4, 3, 2, -1], [0, 0, 2, 3, 4, 3, 2, 3, 5, 4, 3, 2, 3, 2, 0, 0]];
+    let n = 0, ph = PH[0];
     setInterval(() => {
-      i = Math.max(0, Math.min(P.length - 1, i + Math.floor(Math.random() * 5) - 2));
-      this.tone(P[i], 1.4, 'triangle', 0.05);
-      if (Math.random() < 0.3) this.tone(P[i] / 2, 2, 'sine', 0.04, 0.2);
-      if (Math.random() < 0.05) this.tone(1760, 3, 'sine', 0.03);
-    }, 900);
+      const k = n % 16, b = k % 8; n++;
+      if (k === 0 && Math.random() < 0.6) ph = PH[Math.floor(Math.random() * PH.length)];
+      const i = ph[k];
+      if (i >= 0) { this.pluck(S[i]); if (b === 0) this.erhu(S[i] / 2, 1.6, 0.035); }
+      if (b === 0 || b === 2 || b === 4 || b === 5) this.drum();
+      if (b === 6) this.cym();
+    }, 230);
   },
   // อ่านออกเสียงทีละข้อความ ไม่ตัดกัน; start() เรียกตอนเริ่มพูด, end() ตอนพูดจบ
   say(text, start, end) {
