@@ -7,11 +7,13 @@ const Conn = L.WebcastPushConnection || L.TikTokLiveConnection;
 // TIKTOK_USER     = username TikTok ที่ไลฟ์ (ไม่ต้องมี @)
 // ADMIN_KEY       = รหัสลับสำหรับ /api/test (ไม่ตั้ง = ปิดหน้าทดสอบ)
 // TIKTOK_SESSIONID = (ไม่บังคับ) session id ของบัญชี ช่วยให้เชื่อมต่อเสถียรขึ้นถ้าโดนจำกัด
+// SIGN_API_KEY    = (ไม่บังคับ) API key จาก Euler Stream แก้ error 403 SignatureError
 // RENDER_EXTERNAL_URL = Render ใส่ให้เอง ใช้ปลุกตัวเองไม่ให้หลับ
 const USER = String(process.argv[2] || process.env.TIKTOK_USER || '').trim().replace(/^@/, '');
 const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const SESSION_ID = process.env.TIKTOK_SESSIONID || '';
+const SIGN_API_KEY = process.env.SIGN_API_KEY || ''; // <-- เพิ่มใหม่
 const SELF_URL = (process.env.RENDER_EXTERNAL_URL || process.env.SELF_URL || '').replace(/\/$/, '');
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -154,6 +156,7 @@ function startTikTok() {
   if (stopping || !USER) return;
   const opts = { processInitialData: false, enableExtendedGiftInfo: false }; // ไม่เอาข้อความ/ของขวัญเก่าที่ย้อนมาตอนเพิ่งเชื่อม
   if (SESSION_ID) opts.sessionId = SESSION_ID;
+  if (SIGN_API_KEY) opts.signApiKey = SIGN_API_KEY; // <-- เพิ่มใหม่
   let c;
   try { c = new Conn(USER, opts); }
   catch (e) { lastErr = String(e.message || e); console.error('สร้างตัวเชื่อมต่อไม่ได้:', lastErr); return retry('สร้างตัวเชื่อมต่อไม่ได้', 60000); }
