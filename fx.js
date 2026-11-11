@@ -1,8 +1,9 @@
 const FX = {
-  ctx: null, parts: [], sq: [], talking: false, mus: 0,
+  ctx: null, parts: [], sq: [], talking: false, mus: 0, u: null, aud: null,
   init() {
     if (!this.ctx) { const A = window.AudioContext || window.webkitAudioContext; this.ctx = new A(); }
     if (this.ctx.state === 'suspended') this.ctx.resume();
+    try { if (window.speechSynthesis) { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices(); } } catch (e) {}
   },
   tone(f, d, type, v, when, slide) {
     if (!this.ctx) return;
@@ -45,24 +46,77 @@ const FX = {
       if (b === 6) this.cym();
     }, 230);
   },
+
+  // ---------- เสียงพูด ----------
   // อ่านออกเสียงทีละข้อความ ไม่ตัดกัน; start() เรียกตอนเริ่มพูด, end() ตอนพูดจบ
   say(text, start, end) {
     const t = String(text).replace(/[\u3400-\u9fff]/g, '').replace(/[·›\/]/g, ', ').replace(/[^\u0E00-\u0E7Fa-zA-Z0-9 ,.:!?()]/g, ' ').replace(/\s+/g, ' ').trim();
     this.sq.push({ t, start, end }); if (!this.talking) this.next();
   },
+  // ตัดข้อความเป็นท่อนสั้น (ไม่เกิน ~80 ตัวอักษร) ตัดตามคำ เพื่อไม่ให้ Chrome หยุดอ่านกลางคัน
+  chunk(t) {
+    const out = []; let cur = '';
+    const words = (typeof Intl !== 'undefined' && Intl.Segmenter) ? [...new Intl.Segmenter('th', { granularity: 'word' }).segment(t)].map((s) => s.segment) : t.split(/(?<= )/);
+    for (const w of words) {
+      if ((cur + w).length > 80 && cur) { out.push(cur.trim()); cur = w; } else cur += w;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  },
   next() {
     const j = this.sq.shift(); if (!j) { this.talking = false; return; }
     this.talking = true; let done = false;
     const fin = () => { if (done) return; done = true; clearTimeout(tm); j.end && j.end(); this.next(); };
-    const tm = setTimeout(fin, j.t.length * 110 + 2500);
+    // กันค้าง: ถ้าพูดนานเกินไปให้ตัดแล้วไปข้อความถัดไป
+    const tm = setTimeout(() => {
+      if (done) return;
+      console.warn('[TTS] พูดนานเกินกำหนด ข้ามไปข้อความถัดไป');
+      try { speechSynthesis.cancel(); } catch (e) {}
+      try { this.aud && this.aud.pause(); } catch (e) {}
+      fin();
+    }, j.t.length * 140 + 6000);
     j.start && j.start();
-    try {
-      if (!j.t) return fin();
-      const u = new SpeechSynthesisUtterance(j.t); u.lang = 'th-TH'; u.rate = 1.1;
-      const v = speechSynthesis.getVoices().find((x) => x.lang.replace('_', '-').startsWith('th')); if (v) u.voice = v;
-      u.onend = fin; u.onerror = fin; speechSynthesis.speak(u);
-    } catch (e) { fin(); }
+    if (!j.t) return fin();
+    const parts = this.chunk(j.t), alive = () => !done;
+    const run = (i) => {
+      if (done) return;
+      if (i >= parts.length) return fin();
+      this.speak(parts[i], () => run(i + 1), alive);
+    };
+    run(0);
   },
+  // พูดท่อนเดียว: ใช้เสียงไทยในเครื่องก่อน ถ้าไม่มี/ใช้ไม่ได้ ใช้เสียงออนไลน์แทน
+  speak(t, cb, alive) {
+    let called = false; const go = () => { if (called) return; called = true; cb(); };
+    const web = () => this.web(t, go, alive);
+    const ss = window.speechSynthesis;
+    if (!ss || typeof SpeechSynthesisUtterance === 'undefined') return web();
+    const vs = ss.getVoices(), v = vs.find((x) => x.lang.replace('_', '-').toLowerCase().startsWith('th'));
+    if (vs.length && !v) { console.warn('[TTS] ไม่พบเสียงภาษาไทยในเครื่อง ใช้เสียงออนไลน์แทน'); return web(); }
+    try {
+      const u = new SpeechSynthesisUtterance(t); u.lang = 'th-TH'; u.rate = 1.05; if (v) u.voice = v;
+      u.onend = go;
+      u.onerror = (e) => {
+        if (!alive() || e.error === 'canceled' || e.error === 'interrupted') return go();
+        console.warn('[TTS] เสียงในเครื่องใช้ไม่ได้:', e.error, '-> ใช้เสียงออนไลน์แทน');
+        if (!called) web();
+      };
+      this.u = u; // เก็บอ้างอิงไว้ กัน Chrome เก็บกวาดทิ้งจน onend ไม่ทำงาน
+      ss.resume(); ss.speak(u);
+    } catch (e) { web(); }
+  },
+  // เสียงไทยออนไลน์ (Google Translate TTS แบบไม่เป็นทางการ ต้องมีอินเทอร์เน็ต)
+  web(t, go, alive) {
+    if (!alive()) return go();
+    try {
+      const a = new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=th&q=' + encodeURIComponent(t));
+      this.aud = a;
+      a.onended = go;
+      a.onerror = () => { console.warn('[TTS] โหลดเสียงออนไลน์ไม่ได้'); go(); };
+      const p = a.play(); if (p && p.catch) p.catch((e) => { console.warn('[TTS] เล่นเสียงออนไลน์ไม่ได้:', e.name); go(); });
+    } catch (e) { go(); }
+  },
+
   burst(x, y, n, col) {
     for (let i = 0; i < (n || 24); i++) this.parts.push({ x, y, vx: (Math.random() - 0.5) * 7, vy: -Math.random() * 6 - 1, l: 1, c: col || '#ffd54a', s: 3 + Math.random() * 4 });
   },
