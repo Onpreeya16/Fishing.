@@ -13,7 +13,7 @@ const USER = String(process.argv[2] || process.env.TIKTOK_USER || '').trim().rep
 const PORT = process.env.PORT || 3000;
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const SESSION_ID = process.env.TIKTOK_SESSIONID || '';
-const SIGN_API_KEY = process.env.SIGN_API_KEY || ''; // <-- เพิ่มใหม่
+const SIGN_API_KEY = process.env.SIGN_API_KEY || '';
 const SELF_URL = (process.env.RENDER_EXTERNAL_URL || process.env.SELF_URL || '').replace(/\/$/, '');
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -50,12 +50,35 @@ function adminTest(u, res) {
   res.end(JSON.stringify({ ok: true, sent: m, clients: wss.clients.size }));
 }
 
+// ---------- พร็อกซีรูปโปรไฟล์ (ให้เซิร์ฟเวอร์ดึงรูปจาก TikTok CDN แล้วส่งต่อ) ----------
+const AVC = new Map();
+const AV_HOST = /(^|\.)(tiktokcdn(-[a-z]+)?\.com|tiktokv\.(com|us)|byteimg\.com|ibyteimg\.com|ibytedtos\.com|muscdn\.com)$/;
+function avatarProxy(u, res) {
+  const raw = u.searchParams.get('u') || '';
+  let t; try { t = new URL(raw); } catch (e) { res.writeHead(400); return res.end('bad'); }
+  if (t.protocol !== 'https:' || !AV_HOST.test(t.hostname)) { res.writeHead(403); return res.end('no'); }
+  const out = (c) => { res.writeHead(200, { 'Content-Type': c.type, 'Cache-Control': 'public, max-age=86400' }); res.end(c.buf); };
+  const hit = AVC.get(raw); if (hit) return out(hit);
+  const fail = () => { if (!res.headersSent) { res.writeHead(502); res.end('x'); } };
+  const rq = https.get(raw, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36', Accept: 'image/*' }, timeout: 8000 }, (r) => {
+    const type = String(r.headers['content-type'] || '');
+    if (r.statusCode !== 200 || !type.startsWith('image/')) { r.resume(); return fail(); }
+    const ch = []; let n = 0;
+    r.on('data', (b) => { n += b.length; if (n > 600000) rq.destroy(); else ch.push(b); });
+    r.on('end', () => { if (n > 600000) return fail(); const c = { type, buf: Buffer.concat(ch) }; AVC.set(raw, c); if (AVC.size > 300) AVC.delete(AVC.keys().next().value); out(c); });
+    r.on('error', fail);
+  });
+  rq.on('timeout', () => rq.destroy());
+  rq.on('error', fail);
+}
+
 const server = http.createServer((req, res) => {
   try {
     const u = new URL(req.url, 'http://localhost'), p = u.pathname;
     if (p === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
     if (p === '/status') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(JSON.stringify(getStatus(), null, 2)); }
     if (p === '/api/test') return adminTest(u, res);
+    if (p === '/avatar') return avatarProxy(u, res);
     if (p === '/favicon.ico') { res.writeHead(204); return res.end(); }
     const f = FILES[p];
     if (!f) { res.writeHead(404); return res.end('404'); }
@@ -94,9 +117,17 @@ const bestPic = (list) => {
   const ok = a.filter((u) => !/\.heic$/.test(ext(u)));
   return ok.find((u) => /\.jpe?g$/.test(ext(u))) || ok.find((u) => /\.(webp|png)$/.test(ext(u))) || ok[0] || '';
 };
+// ถ้าฟิลด์ปกติว่าง ให้สแกนหา URL รูปโปรไฟล์ในข้อมูลดิบเอง
+const scan = (o, dep, out) => {
+  if (!o || dep > 4) return out;
+  if (typeof o === 'string') { if (/^https?:\/\//.test(o) && /-avt-|avatar|profile/i.test(o)) out.push(o); }
+  else if (typeof o === 'object') Object.keys(o).forEach((k) => scan(o[k], dep + 1, out));
+  return out;
+};
 const who = (d) => {
   const u = d.user || {}, pp = u.profilePicture || d.profilePicture || {};
-  const list = [].concat(pp.urls || [], pp.url || [], u.profilePictureUrl || [], d.profilePictureUrl || []);
+  let list = [].concat(pp.urls || [], pp.url || [], u.profilePictureUrl || [], d.profilePictureUrl || []);
+  if (!list.some(Boolean)) list = scan(d, 0, []);
   return { handle: d.uniqueId || u.uniqueId || '', pic: bestPic(list) };
 };
 const nick = (d) => d.nickname || (d.user && d.user.nickname) || d.uniqueId || (d.user && d.user.uniqueId) || 'ผู้ใจบุญ';
@@ -164,7 +195,7 @@ function startTikTok() {
   if (stopping || !USER) return;
   const opts = { processInitialData: false, enableExtendedGiftInfo: false }; // ไม่เอาข้อความ/ของขวัญเก่าที่ย้อนมาตอนเพิ่งเชื่อม
   if (SESSION_ID) opts.sessionId = SESSION_ID;
-  if (SIGN_API_KEY) opts.signApiKey = SIGN_API_KEY; // <-- เพิ่มใหม่
+  if (SIGN_API_KEY) opts.signApiKey = SIGN_API_KEY;
   let c;
   try { c = new Conn(USER, opts); }
   catch (e) { lastErr = String(e.message || e); console.error('สร้างตัวเชื่อมต่อไม่ได้:', lastErr); return retry('สร้างตัวเชื่อมต่อไม่ได้', 60000); }
